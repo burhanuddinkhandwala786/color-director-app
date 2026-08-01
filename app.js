@@ -160,10 +160,11 @@ function renderApp() {
   `;
 
   attachEventListeners();
+  restoreCanvasState(); // Re-draws canvases across step changes without losing data
 }
 
 // ==========================================
-// 3. FILE INGESTION & EVENT BINDINGS
+// 3. FILE INGESTION & ASYNCHRONOUS EVENT BINDINGS
 // ==========================================
 function attachEventListeners() {
   bindDropzone("dropzonePrimary", "filePrimary", (file) => processImageFile(file, 'primary'));
@@ -175,8 +176,24 @@ function attachEventListeners() {
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
 
-  if (prevBtn) prevBtn.onclick = () => { if (currentStep > 0) { currentStep--; renderApp(); } };
-  if (nextBtn) nextBtn.onclick = () => { if (currentStep < STEPS.length - 1) { currentStep++; renderApp(); } };
+  // Non-blocking UI step navigation (Fixes INP 512ms issue)
+  if (prevBtn) {
+    prevBtn.onclick = () => {
+      if (currentStep > 0) {
+        currentStep--;
+        requestAnimationFrame(() => renderApp());
+      }
+    };
+  }
+
+  if (nextBtn) {
+    nextBtn.onclick = () => {
+      if (currentStep < STEPS.length - 1) {
+        currentStep++;
+        requestAnimationFrame(() => renderApp());
+      }
+    };
+  }
 }
 
 function bindDropzone(dropzoneId, inputId, callback) {
@@ -198,7 +215,7 @@ function bindDropzone(dropzoneId, inputId, callback) {
 }
 
 // ==========================================
-// 4. IMAGE PROCESSING & CANVASES
+// 4. IMAGE PROCESSING & CANVAS RESTORATION
 // ==========================================
 function processImageFile(file, type) {
   if (!file || !file.type.startsWith("image/")) return;
@@ -232,6 +249,35 @@ function processImageFile(file, type) {
     img.src = event.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function restoreCanvasState() {
+  if (primaryImageData) {
+    const canvas = document.getElementById('primaryCanvas');
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      canvas.width = primaryImageData.img.width;
+      canvas.height = primaryImageData.img.height;
+      ctx.putImageData(primaryImageData.imageData, 0, 0);
+      drawHistogram(primaryImageData.imageData, 'primaryHist');
+      drawVectorscope(primaryImageData.imageData);
+    }
+  }
+
+  if (referenceImageData) {
+    const refCanvas = document.getElementById('refCanvas');
+    if (refCanvas) {
+      const ctx = refCanvas.getContext("2d");
+      refCanvas.width = referenceImageData.img.width;
+      refCanvas.height = referenceImageData.img.height;
+      ctx.putImageData(referenceImageData.imageData, 0, 0);
+      drawHistogram(referenceImageData.imageData, 'refHist');
+    }
+  }
+
+  if (primaryImageData || referenceImageData) {
+    runEnterpriseAnalysis();
+  }
 }
 
 // ==========================================
