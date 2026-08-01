@@ -1,191 +1,317 @@
 // ==========================================
-// 1. APP STATE & GUIDED STEPS
+// 1. APP STATE & SANDBOX ENGINE PARAMETERS
 // ==========================================
-const STEPS = [
-  {
-    title: "Step 1: Exposure Assessment & Detail Recovery",
-    instruction: "Upload your shot. The app will inspect pixel luma data and tell you if exposure recovery is required.",
-    action: "Exposure Assessment"
-  },
-  {
-    title: "Step 2: Color Calibration & Mood Alignment",
-    instruction: "Align skin tones using the 360° Vectorscope or select a mood preset to match target hues.",
-    action: "Mood Alignment"
-  },
-  {
-    title: "Step 3: Grade Finalization & LUT Export",
-    instruction: "Review the full recovery checklist or click 'Export 3D .CUBE LUT' for 1-click application.",
-    action: "Grade Export"
-  }
-];
-
-const MOOD_PRESETS = {
-  cinematic: { name: "🎬 Moody Cinematic", lumaTarget: 80, warmBias: -10, description: "Lowered exposure, deep shadows, cool/teal midtones." },
-  golden: { name: "🌅 Golden Hour", lumaTarget: 110, warmBias: 25, description: "Warm golden highlights, soft contrast, glowing skin." },
-  tealOrange: { name: "🎨 Teal & Orange", lumaTarget: 95, warmBias: 15, description: "Punchy contrast, warm skin, cool cyan background." },
-  vintage: { name: "📸 Vintage Film", lumaTarget: 105, warmBias: 10, description: "Faded blacks, warm cream highlights, classic film feel." }
-};
-
-let currentStep = 0;
 let primaryImageData = null;
 let referenceImageData = null;
-let activePreset = null;
-let isFalseColorActive = false;
-let selectedSoftware = "davinci"; // Default software selection
+
+// Real-time Live Sandbox Adjustments State
+let adjustState = {
+  exposure: 0,     // -100 to 100
+  contrast: 0,     // -100 to 100
+  highlights: 0,   // -100 to 100
+  shadows: 0,      // -100 to 100
+  temp: 0,         // -100 (Cool) to 100 (Warm)
+  tint: 0,         // -100 (Green) to 100 (Magenta)
+  saturation: 0    // -100 (B&W) to 100 (Vibrant)
+};
+
+let activeTab = "sandbox"; // "sandbox" or "davinci"
 
 // ==========================================
-// 2. CORE RENDERING ENGINE
+// 2. CORE UI LAYOUT ENGINE
 // ==========================================
 function renderApp() {
   const root = document.getElementById("root");
   if (!root) return;
 
-  const step = STEPS[currentStep];
-
   root.innerHTML = `
     <div class="bg-gray-900 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl space-y-6">
       
-      <!-- Header -->
-      <div class="flex flex-wrap justify-between items-center border-b border-gray-800 pb-4 gap-2">
+      <!-- Top Navigation Header -->
+      <div class="flex flex-wrap justify-between items-center border-b border-gray-800 pb-4 gap-4">
         <div>
-          <h1 class="text-xl font-bold text-cyan-400">${step.title}</h1>
-          <p class="text-xs text-gray-400 mt-1">${step.instruction}</p>
+          <h1 class="text-xl font-bold text-cyan-400">Color Director AI — Sandbox & Scope Master</h1>
+          <p class="text-xs text-gray-400 mt-1">Interactively grade shots, generate 3D LUTs, or master DaVinci Resolve scopes.</p>
         </div>
-        
-        <!-- Software Selection Dropdown -->
-        <div class="flex items-center gap-2 bg-gray-950 p-1.5 rounded-lg border border-gray-800">
-          <label class="text-[11px] font-bold text-gray-400">Software:</label>
-          <select id="softwareSelect" class="bg-gray-900 text-cyan-300 text-xs font-semibold rounded px-2 py-1 border border-gray-700 outline-none">
-            <option value="davinci" ${selectedSoftware === 'davinci' ? 'selected' : ''}>DaVinci Resolve</option>
-            <option value="premiere" ${selectedSoftware === 'premiere' ? 'selected' : ''}>Adobe Premiere</option>
-            <option value="lightroom" ${selectedSoftware === 'lightroom' ? 'selected' : ''}>Lightroom / Camera Raw</option>
-            <option value="capcut" ${selectedSoftware === 'capcut' ? 'selected' : ''}>CapCut / Mobile</option>
-          </select>
+
+        <!-- Engine Mode Switcher -->
+        <div class="flex bg-gray-950 p-1 rounded-xl border border-gray-800">
+          <button id="tabSandbox" onclick="switchTab('sandbox')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'sandbox' ? 'bg-cyan-600 text-white shadow' : 'text-gray-400 hover:text-white'}">
+            🎨 Interactive Live Sandbox
+          </button>
+          <button id="tabDaVinci" onclick="switchTab('davinci')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'davinci' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}">
+            🎬 DaVinci Scope Masterclass
+          </button>
         </div>
       </div>
 
-      <!-- Image Ingestion Dropzones -->
+      <!-- Image Upload Dropzones -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div id="dropzonePrimary" class="border-2 border-dashed border-gray-700 hover:border-cyan-400 rounded-xl p-4 text-center transition-all cursor-pointer bg-gray-950/50">
+        <div id="dropzonePrimary" class="border-2 border-dashed border-gray-700 hover:border-cyan-400 rounded-xl p-4 text-center transition cursor-pointer bg-gray-950/50">
           <input type="file" id="filePrimary" accept="image/*" class="hidden" />
-          <p class="text-xs font-bold text-cyan-400 uppercase tracking-wide">📸 1. Your Shot (Required)</p>
-          <p class="text-xs text-gray-400 mt-1">Drag & drop or click to upload</p>
+          <p class="text-xs font-bold text-cyan-400 uppercase tracking-wide">📸 1. Upload Your Shot</p>
+          <p class="text-xs text-gray-400 mt-1">Drag & drop or click to load snapshot</p>
         </div>
 
-        <div id="dropzoneRef" class="border-2 border-dashed border-gray-700 hover:border-purple-400 rounded-xl p-4 text-center transition-all cursor-pointer bg-gray-950/50">
+        <div id="dropzoneRef" class="border-2 border-dashed border-gray-700 hover:border-purple-400 rounded-xl p-4 text-center transition cursor-pointer bg-gray-950/50">
           <input type="file" id="fileRef" accept="image/*" class="hidden" />
-          <p class="text-xs font-bold text-purple-400 uppercase tracking-wide">🎬 2. Reference Image (Optional)</p>
-          <p class="text-xs text-gray-400 mt-1">Drop a movie still or look you want to copy</p>
+          <p class="text-xs font-bold text-purple-400 uppercase tracking-wide">🎬 2. Target Reference (Optional)</p>
+          <p class="text-xs text-gray-400 mt-1">Compare target frame or movie still</p>
         </div>
       </div>
 
-      <!-- Target Mood Presets -->
-      <div class="bg-gray-950/60 p-3 rounded-xl border border-gray-800 space-y-2">
-        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Target Mood Presets (Or use reference above):</p>
-        <div class="flex flex-wrap gap-2">
-          ${Object.keys(MOOD_PRESETS).map(key => `
-            <button 
-              onclick="selectPreset('${key}')" 
-              class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${activePreset === key ? 'bg-cyan-600 text-white border-cyan-400' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'}"
-            >
-              ${MOOD_PRESETS[key].name}
-            </button>
-          `).join('')}
-        </div>
-      </div>
-
-      <!-- Toolbar Controls -->
-      <div id="toolbar" class="flex flex-wrap gap-2 items-center justify-between border-t border-b border-gray-800 py-3">
-        <button id="toggleFalseColor" class="px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition">
-          🎨 ${isFalseColorActive ? 'Disable Exposure Map' : 'Toggle Visual Exposure Map'}
-        </button>
-
-        <button id="exportLUT" class="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-semibold border border-purple-500/30 transition">
-          💾 Export 3D .CUBE LUT
-        </button>
-      </div>
-
-      <!-- Preview Displays -->
-      <div id="previewContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center relative min-h-[200px] justify-center">
-          <p class="text-xs text-gray-400 mb-2 font-semibold">YOUR SHOT</p>
-          <div class="relative max-w-full max-h-[180px]">
-            <canvas id="primaryCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg block"></canvas>
-            <canvas id="falseColorCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg absolute top-0 left-0 hidden"></canvas>
-          </div>
+      <!-- Main Dual Display & Vectorscope Suite -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-black/60 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[200px]">
+          <p class="text-xs text-cyan-400 mb-2 font-bold uppercase tracking-wider">Live Sandbox Canvas</p>
+          <canvas id="primaryCanvas" class="max-w-full max-h-[220px] object-contain rounded-lg"></canvas>
         </div>
 
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center min-h-[200px] justify-center">
-          <p class="text-xs text-purple-400 mb-2 font-semibold">TARGET REFERENCE</p>
-          <canvas id="refCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg"></canvas>
+        <div class="bg-black/60 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[200px]">
+          <p class="text-xs text-purple-400 mb-2 font-bold uppercase tracking-wider">Reference Look</p>
+          <canvas id="refCanvas" class="max-w-full max-h-[220px] object-contain rounded-lg"></canvas>
         </div>
 
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center min-h-[200px] justify-center">
-          <p class="text-xs text-cyan-400 mb-2 font-semibold">COLOR DISTRIBUTION</p>
+        <div class="bg-black/60 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[200px]">
+          <p class="text-xs text-cyan-400 mb-2 font-bold uppercase tracking-wider">Live YUV Vectorscope</p>
           <canvas id="vectorscopeCanvas" width="180" height="180" class="w-[180px] h-[180px] bg-gray-950 rounded-full border border-gray-800"></canvas>
         </div>
       </div>
 
-      <!-- Live Interactive On-Screen Assistant -->
-      <div id="critiqueBox" class="bg-gray-950 border border-cyan-500/30 p-5 rounded-xl text-xs space-y-3">
-        <div class="flex justify-between items-center">
-          <p class="font-bold text-cyan-400 text-sm flex items-center gap-2">
-            <span>🤖</span> Live App Guidance & Action Steps
-          </p>
-          <span id="exposureStatusBadge" class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-gray-800 text-gray-400">
-            Awaiting Image
-          </span>
-        </div>
-        
-        <div id="critiqueFeedback" class="text-gray-300 space-y-2 leading-relaxed">
-          Upload an image above. The app will automatically analyze your pixels and generate your step-by-step recovery checklist right here.
-        </div>
-      </div>
+      <!-- DYNAMIC CONTENT: SANDBOX SLIDERS vs DAVINCI MASTERCLASS -->
+      <div id="tabContent"></div>
 
-      <!-- Navigation -->
-      <div class="flex justify-between pt-2">
-        <button id="prevBtn" ${currentStep === 0 ? 'disabled' : ''} class="px-4 py-2 bg-gray-800 rounded-lg text-sm disabled:opacity-30 hover:bg-gray-700 transition">
-          Previous Step
-        </button>
-        <button id="nextBtn" ${currentStep === STEPS.length - 1 ? 'disabled' : ''} class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-sm font-bold text-white disabled:opacity-30 transition">
-          Next Step
-        </button>
-      </div>
     </div>
   `;
 
   attachEventListeners();
-  restoreCanvasState();
+  renderTabContent();
 }
 
-window.selectPreset = function(key) {
-  activePreset = key;
+window.switchTab = function(tab) {
+  activeTab = tab;
   renderApp();
 };
 
 // ==========================================
-// 3. EVENT BINDINGS
+// 3. TAB RENDERING: SANDBOX vs DAVINCI MASTER
+// ==========================================
+function renderTabContent() {
+  const container = document.getElementById("tabContent");
+  if (!container) return;
+
+  if (activeTab === "sandbox") {
+    container.innerHTML = `
+      <div class="bg-gray-950 border border-cyan-500/30 p-5 rounded-2xl space-y-4">
+        <div class="flex justify-between items-center border-b border-gray-800 pb-3">
+          <p class="font-bold text-cyan-400 text-sm flex items-center gap-2">
+            🎛️ Real-Time Interactive Sandbox Controls
+          </p>
+          <div class="flex gap-2">
+            <button onclick="resetSliders()" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold border border-gray-700 transition">
+              🔄 Reset Sliders
+            </button>
+            <button onclick="export3DLUT()" class="px-3 py-1 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-bold border border-purple-500/30 transition">
+              💾 Export 3D .CUBE LUT
+            </button>
+          </div>
+        </div>
+
+        <!-- Interactive Sliders Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+          
+          <!-- Exposure -->
+          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
+            <div class="flex justify-between font-bold text-gray-300">
+              <span>☀️ Exposure</span>
+              <span id="valExposure" class="text-cyan-400">${adjustState.exposure}</span>
+            </div>
+            <input type="range" id="slideExposure" min="-100" max="100" value="${adjustState.exposure}" class="w-full accent-cyan-500 cursor-pointer" />
+          </div>
+
+          <!-- Contrast -->
+          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
+            <div class="flex justify-between font-bold text-gray-300">
+              <span>☯️ Contrast</span>
+              <span id="valContrast" class="text-cyan-400">${adjustState.contrast}</span>
+            </div>
+            <input type="range" id="slideContrast" min="-100" max="100" value="${adjustState.contrast}" class="w-full accent-cyan-500 cursor-pointer" />
+          </div>
+
+          <!-- Highlights -->
+          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
+            <div class="flex justify-between font-bold text-gray-300">
+              <span>🏔️ Highlights</span>
+              <span id="valHighlights" class="text-cyan-400">${adjustState.highlights}</span>
+            </div>
+            <input type="range" id="slideHighlights" min="-100" max="100" value="${adjustState.highlights}" class="w-full accent-cyan-500 cursor-pointer" />
+          </div>
+
+          <!-- Shadows -->
+          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
+            <div class="flex justify-between font-bold text-gray-300">
+              <span>🌑 Shadows</span>
+              <span id="valShadows" class="text-cyan-400">${adjustState.shadows}</span>
+            </div>
+            <input type="range" id="slideShadows" min="-100" max="100" value="${adjustState.shadows}" class="w-full accent-cyan-500 cursor-pointer" />
+          </div>
+
+          <!-- Temperature -->
+          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
+            <div class="flex justify-between font-bold text-gray-300">
+              <span>🌡️ Temperature (Cool / Warm)</span>
+              <span id="valTemp" class="text-cyan-400">${adjustState.temp}</span>
+            </div>
+            <input type="range" id="slideTemp" min="-100" max="100" value="${adjustState.temp}" class="w-full accent-amber-500 cursor-pointer" />
+          </div>
+
+          <!-- Saturation -->
+          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
+            <div class="flex justify-between font-bold text-gray-300">
+              <span>🎨 Saturation</span>
+              <span id="valSaturation" class="text-cyan-400">${adjustState.saturation}</span>
+            </div>
+            <input type="range" id="slideSaturation" min="-100" max="100" value="${adjustState.saturation}" class="w-full accent-cyan-500 cursor-pointer" />
+          </div>
+
+        </div>
+      </div>
+    `;
+
+    bindSliderEvents();
+  } else {
+    container.innerHTML = `
+      <div class="bg-gray-950 border border-purple-500/30 p-5 rounded-2xl space-y-4 text-xs">
+        <p class="font-bold text-purple-400 text-sm flex items-center gap-2">
+          🎬 Native DaVinci Resolve Masterclass: Reading Scopes Like a Pro
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Waveform Scope Guide -->
+          <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl space-y-2">
+            <h3 class="font-bold text-cyan-300 text-sm border-b border-gray-800 pb-1">1. The Waveform Scope (Luminance & Exposure)</h3>
+            <p class="text-gray-300 leading-relaxed">
+              Open DaVinci's Scope window (<code class="bg-black px-1 py-0.5 rounded text-amber-300">Workspace ➔ Scopes ➔ Waveform</code>).
+            </p>
+            <ul class="list-disc pl-4 space-y-1.5 text-gray-400">
+              <li><strong class="text-white">1024 Line (Top):</strong> Pure white highlight clip zone. If signals smash against 1024, your sky or whites are permanently blown out.</li>
+              <li><strong class="text-white">400 - 600 Range (Middle):</strong> Where standard middle gray and skin tones belong.</li>
+              <li><strong class="text-white">0 Line (Bottom):</strong> Pure black. If trace data hits 0, shadow details are crushed. Adjust <code class="text-cyan-300">Lift</code> wheel until shadows sit comfortably around 64-128.</li>
+            </ul>
+          </div>
+
+          <!-- RGB Parade Guide -->
+          <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl space-y-2">
+            <h3 class="font-bold text-purple-300 text-sm border-b border-gray-800 pb-1">2. RGB Parade Scope (Color Balance)</h3>
+            <p class="text-gray-300 leading-relaxed">
+              Switch Scope to <code class="bg-black px-1 py-0.5 rounded text-amber-300">Parade (RGB)</code>. It separates your shot into Red, Green, and Blue columns.
+            </p>
+            <ul class="list-disc pl-4 space-y-1.5 text-gray-400">
+              <li><strong class="text-white">White Balance Calibration:</strong> If all 3 columns align at equal heights, your neutral whites/grays are perfectly balanced.</li>
+              <li><strong class="text-white">Warm / Sunset Grade:</strong> The Red column trace sits higher than Blue.</li>
+              <li><strong class="text-white">Cinematic Teal & Orange:</strong> Red trace sits high in midtones, Blue trace sits high in the bottom shadows.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="bg-purple-950/40 border border-purple-500/30 p-3 rounded-xl">
+          <strong class="text-purple-300 block">💡 Pro Colorist Workflow:</strong>
+          <span class="text-gray-300">Use Node 1 in DaVinci to balance the Waveform scope so no data hits 0 or 1024. Then, apply the 3D LUT exported from our Interactive Sandbox on Node 2!</span>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// ==========================================
+// 4. REAL-TIME PIXEL PROCESSING & SLIDERS
+// ==========================================
+function bindSliderEvents() {
+  const sliders = ["Exposure", "Contrast", "Highlights", "Shadows", "Temp", "Saturation"];
+  sliders.forEach(s => {
+    const el = document.getElementById(`slide${s}`);
+    const valEl = document.getElementById(`val${s}`);
+    if (el) {
+      el.oninput = (e) => {
+        const val = parseInt(e.target.value);
+        adjustState[s.toLowerCase()] = val;
+        if (valEl) valEl.innerText = val;
+        
+        // Debounced non-blocking render on animation frame
+        requestAnimationFrame(applySandboxPipeline);
+      };
+    }
+  });
+}
+
+window.resetSliders = function() {
+  adjustState = { exposure: 0, contrast: 0, highlights: 0, shadows: 0, temp: 0, tint: 0, saturation: 0 };
+  renderApp();
+};
+
+function applySandboxPipeline() {
+  if (!primaryImageData) return;
+
+  const canvas = document.getElementById('primaryCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  const width = primaryImageData.imageData.width;
+  const height = primaryImageData.imageData.height;
+  const imgData = ctx.createImageData(width, height);
+  const data = imgData.data;
+  const raw = primaryImageData.rawData;
+
+  // Real-Time Slider Adjustments Math
+  const expMult = Math.pow(2, adjustState.exposure / 50); // Exposure EV scale
+  const contrastFactor = (259 * (adjustState.contrast + 255)) / (255 * (259 - adjustState.contrast));
+  const tempOffset = adjustState.temp * 0.8;
+  const satMult = 1 + (adjustState.saturation / 100);
+
+  for (let i = 0; i < raw.length; i += 4) {
+    let r = raw[i];
+    let g = raw[i + 1];
+    let b = raw[i + 2];
+
+    // 1. Exposure
+    r *= expMult;
+    g *= expMult;
+    b *= expMult;
+
+    // 2. Temperature (Cool / Warm)
+    r += tempOffset;
+    b -= tempOffset;
+
+    // 3. Contrast
+    r = contrastFactor * (r - 128) + 128;
+    g = contrastFactor * (g - 128) + 128;
+    b = contrastFactor * (b - 128) + 128;
+
+    // 4. Saturation
+    const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    r = gray + satMult * (r - gray);
+    g = gray + satMult * (g - gray);
+    b = gray + satMult * (b - gray);
+
+    // Clamp values [0, 255]
+    data[i]     = Math.min(255, Math.max(0, r));
+    data[i + 1] = Math.min(255, Math.max(0, g));
+    data[i + 2] = Math.min(255, Math.max(0, b));
+    data[i + 3] = raw[i + 3];
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+
+  // Dynamically update vectorscope based on edited image data
+  drawVectorscope(imgData);
+}
+
+// ==========================================
+// 5. ASYNCHRONOUS FILE INGESTION
 // ==========================================
 function attachEventListeners() {
   bindDropzone("dropzonePrimary", "filePrimary", (file) => processImageFile(file, 'primary'));
   bindDropzone("dropzoneRef", "fileRef", (file) => processImageFile(file, 'reference'));
-
-  document.getElementById("toggleFalseColor").onclick = toggleFalseColorMode;
-  document.getElementById("exportLUT").onclick = export3DLUT;
-
-  const swSelect = document.getElementById("softwareSelect");
-  if (swSelect) {
-    swSelect.onchange = (e) => {
-      selectedSoftware = e.target.value;
-      if (primaryImageData) runAppOnScreenGuidance();
-    };
-  }
-
-  const prevBtn = document.getElementById("prevBtn");
-  const nextBtn = document.getElementById("nextBtn");
-
-  if (prevBtn) prevBtn.onclick = () => { if (currentStep > 0) { currentStep--; renderApp(); } };
-  if (nextBtn) nextBtn.onclick = () => { if (currentStep < STEPS.length - 1) { currentStep++; renderApp(); } };
 }
 
 function bindDropzone(dropzoneId, inputId, callback) {
@@ -206,9 +332,6 @@ function bindDropzone(dropzoneId, inputId, callback) {
   };
 }
 
-// ==========================================
-// 4. ASYNCHRONOUS NON-BLOCKING IMAGE ENGINE
-// ==========================================
 function processImageFile(file, type) {
   if (!file || !file.type.startsWith("image/")) return;
 
@@ -236,17 +359,9 @@ function processImageFile(file, type) {
 
       if (type === 'primary') {
         primaryImageData = { img, imageData, rawData: new Uint8ClampedArray(imageData.data) };
-        isFalseColorActive = false;
-
-        setTimeout(() => {
-          generateFalseColorOverlay(w, h);
-          drawVectorscope(imageData);
-          runAppOnScreenGuidance();
-        }, 0);
+        applySandboxPipeline();
       } else {
         referenceImageData = { img, imageData };
-        activePreset = null;
-        setTimeout(() => runAppOnScreenGuidance(), 0);
       }
     };
     img.src = event.target.result;
@@ -256,22 +371,7 @@ function processImageFile(file, type) {
 
 function restoreCanvasState() {
   if (primaryImageData) {
-    const canvas = document.getElementById('primaryCanvas');
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      canvas.width = primaryImageData.imageData.width;
-      canvas.height = primaryImageData.imageData.height;
-      ctx.putImageData(primaryImageData.imageData, 0, 0);
-
-      generateFalseColorOverlay(canvas.width, canvas.height);
-      drawVectorscope(primaryImageData.imageData);
-
-      const fcCanvas = document.getElementById("falseColorCanvas");
-      if (fcCanvas) {
-        if (isFalseColorActive) fcCanvas.classList.remove("hidden");
-        else fcCanvas.classList.add("hidden");
-      }
-    }
+    applySandboxPipeline();
   }
 
   if (referenceImageData) {
@@ -283,68 +383,10 @@ function restoreCanvasState() {
       ctx.putImageData(referenceImageData.imageData, 0, 0);
     }
   }
-
-  if (primaryImageData) runAppOnScreenGuidance();
 }
 
 // ==========================================
-// 5. INSTANT CSS-BASED FALSE COLOR TOGGLE (0ms LATENCY)
-// ==========================================
-function generateFalseColorOverlay(width, height) {
-  const fcCanvas = document.getElementById("falseColorCanvas");
-  if (!fcCanvas || !primaryImageData) return;
-
-  fcCanvas.width = width;
-  fcCanvas.height = height;
-  const ctx = fcCanvas.getContext("2d");
-  const imgData = ctx.createImageData(width, height);
-  const targetData = imgData.data;
-  const raw = primaryImageData.rawData;
-
-  for (let i = 0; i < raw.length; i += 4) {
-    const r = raw[i], g = raw[i + 1], b = raw[i + 2];
-    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-    if (luma >= 250) {          // Highlight clipping -> Red
-      targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
-    } else if (luma >= 100 && luma <= 115) { // Skin Highs -> Pink
-      targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
-    } else if (luma >= 40 && luma <= 48) {   // Midtones -> Green
-      targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
-    } else if (luma <= 10) {                 // Shadows Crushed -> Purple
-      targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
-    } else {
-      targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
-    }
-    targetData[i + 3] = raw[i + 3];
-  }
-
-  ctx.putImageData(imgData, 0, 0);
-}
-
-function toggleFalseColorMode() {
-  if (!primaryImageData) return;
-
-  const fcCanvas = document.getElementById("falseColorCanvas");
-  if (!fcCanvas) return;
-
-  isFalseColorActive = !isFalseColorActive;
-
-  if (isFalseColorActive) {
-    fcCanvas.classList.remove("hidden");
-  } else {
-    fcCanvas.classList.add("hidden");
-  }
-
-  const btn = document.getElementById("toggleFalseColor");
-  if (btn) {
-    btn.className = `px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition`;
-    btn.innerText = isFalseColorActive ? "🎨 Disable Exposure Map" : "🎨 Toggle Visual Exposure Map";
-  }
-}
-
-// ==========================================
-// 6. FAST VECTORSCOPE DISPLAY
+// 6. VECTORSCOPE ENGINE
 // ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
@@ -393,162 +435,7 @@ function drawVectorscope(imageData) {
 }
 
 // ==========================================
-// 7. STEP-AWARE & MULTI-CHANNEL GUIDANCE ENGINE
-// ==========================================
-function runAppOnScreenGuidance() {
-  const feedback = document.getElementById("critiqueFeedback");
-  const badge = document.getElementById("exposureStatusBadge");
-  if (!feedback || !primaryImageData) return;
-
-  const pData = primaryImageData.rawData;
-  let pLumaSum = 0, pRedSum = 0, pGreenSum = 0, pBlueSum = 0;
-  const sampleStep = 16;
-  const sampleCount = pData.length / sampleStep;
-
-  for (let i = 0; i < pData.length; i += sampleStep) {
-    pRedSum += pData[i]; 
-    pGreenSum += pData[i + 1]; 
-    pBlueSum += pData[i + 2];
-    pLumaSum += (0.2126 * pData[i] + 0.7152 * pData[i + 1] + 0.0722 * pData[i + 2]);
-  }
-
-  const pAvgLuma = pLumaSum / sampleCount;
-  const pAvgGreen = pGreenSum / sampleCount;
-  const pAvgRed = pRedSum / sampleCount;
-  const pAvgBlue = pBlueSum / sampleCount;
-
-  let cards = [];
-
-  // Software Vocabulary Dictionary
-  const swNames = {
-    davinci: { layer: "Node 1", midtone: "Gamma Wheel", shadow: "Lift Wheel", targetLayer: "Node 2 & 3", hsl: "HSL Curves" },
-    premiere: { layer: "Lumetri - Basic Correction", midtone: "Midtones Wheel", shadow: "Shadows Wheel", targetLayer: "Lumetri Color Panel", hsl: "Color Mixer (HSL)" },
-    lightroom: { layer: "Basic Panel", midtone: "Midtones / Exposure", shadow: "Shadows Slider", targetLayer: "Color Grading Panel", hsl: "HSL / Color Mixer" },
-    capcut: { layer: "Adjust Tab", midtone: "Brightness / Highlights", shadow: "Shadows", targetLayer: "Filters / Adjustments", hsl: "HSL Sliders" }
-  };
-  const sw = swNames[selectedSoftware] || swNames.davinci;
-
-  // 1. EXPOSURE BADGE LOGIC
-  if (pAvgLuma < 45) {
-    if (badge) {
-      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-800";
-      badge.innerText = "Underexposed / Too Dark";
-    }
-  } else if (pAvgLuma > 110) {
-    if (badge) {
-      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800";
-      badge.innerText = "Overexposed & Flushed Details";
-    }
-  } else {
-    if (badge) {
-      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-green-950 text-green-400 border border-green-800";
-      badge.innerText = "Exposure Balanced";
-    }
-  }
-
-  // Calculate Reference Data or Preset
-  let targetLuma = 100, targetWarmth = 0, targetGreen = 0;
-  let targetMoodName = "Standard Balance";
-
-  if (referenceImageData) {
-    const rData = referenceImageData.imageData.data;
-    let rLumaSum = 0, rRedSum = 0, rGreenSum = 0, rBlueSum = 0;
-    const rSampleCount = rData.length / sampleStep;
-
-    for (let i = 0; i < rData.length; i += sampleStep) {
-      rRedSum += rData[i]; 
-      rGreenSum += rData[i + 1]; 
-      rBlueSum += rData[i + 2];
-      rLumaSum += (0.2126 * rData[i] + 0.7152 * rData[i + 1] + 0.0722 * rData[i + 2]);
-    }
-    targetLuma = rLumaSum / rSampleCount;
-    targetWarmth = (rRedSum - rBlueSum) / rSampleCount;
-    targetGreen = (rGreenSum - ((rRedSum + rBlueSum) / 2)) / rSampleCount;
-    targetMoodName = "Target Reference Frame";
-  } else if (activePreset && MOOD_PRESETS[activePreset]) {
-    const p = MOOD_PRESETS[activePreset];
-    targetLuma = p.lumaTarget;
-    targetWarmth = p.warmBias;
-    targetMoodName = p.name;
-  }
-
-  // ==========================================
-  // STEP-SPECIFIC GUIDANCE SWITCH
-  // ==========================================
-
-  // STEP 1: EXPOSURE & CONTRAST FOCUS ONLY
-  if (currentStep === 0) {
-    if (pAvgLuma < 45) {
-      cards.push(`
-        <div class="bg-red-950/40 border border-red-500/40 p-3 rounded-lg space-y-1.5">
-          <p class="font-bold text-red-300 text-xs">🌑 STEP 1 RECOVERY: SHOT IS TOO DARK (In ${sw.layer})</p>
-          <p class="text-red-200/90 text-xs">Boost Exposure/Offset (+0.80 to +1.20) and lift midtones to pull shadows out of total black.</p>
-        </div>
-      `);
-    } else if (pAvgLuma > 110) {
-      cards.push(`
-        <div class="bg-amber-950/40 border border-amber-500/40 p-3 rounded-lg space-y-1.5">
-          <p class="font-bold text-amber-300 text-xs">⚠️ STEP 1 RECOVERY: SHOT IS OVEREXPOSED (In ${sw.layer})</p>
-          <p class="text-amber-200/90 text-xs">Pull Highlights down (-70) and drop shadows/lift to rebuild washed-out contrast.</p>
-        </div>
-      `);
-    } else {
-      const lumaDiff = targetLuma - pAvgLuma;
-      let expText = lumaDiff < -15 
-        ? `Reference is darker and moodier. Lower your exposure (-0.40) and pull down shadows.`
-        : lumaDiff > 15 
-        ? `Reference is brighter. Lift midtones/gamma (+0.30) to match.`
-        : `Luminance levels match your target reference shot.`;
-
-      cards.push(`
-        <div class="bg-gray-900 border border-gray-800 p-3 rounded-lg space-y-1 text-xs">
-          <p class="font-bold text-cyan-400">☀️ STEP 1: EXPOSURE & CONTRAST BALANCING (In ${sw.layer})</p>
-          <p class="text-gray-300">${expText}</p>
-        </div>
-      `);
-    }
-  }
-
-  // STEP 2: HUE, SATURATION & FOLIAGE/SKIN CALIBRATION
-  else if (currentStep === 1) {
-    let colorGuides = [];
-
-    // Warmth vs Cool
-    if (targetWarmth > 10) {
-      colorGuides.push(`Nudge midtones (${sw.midtone}) toward <strong>Warm Amber/Gold</strong>.`);
-    } else if (targetWarmth < -10) {
-      colorGuides.push(`Push shadows (${sw.shadow}) toward <strong>Cool Teal/Cyan</strong>.`);
-    }
-
-    // Foliage & Greens Check
-    if (targetGreen > 12) {
-      colorGuides.push(`Reference has rich green foliage. In <strong>${sw.hsl}</strong>, boost Green Saturation (+25) and shift Green Hue toward rich forest green.`);
-    }
-
-    cards.push(`
-      <div class="bg-gray-900 border border-gray-800 p-3 rounded-lg space-y-2 text-xs">
-        <p class="font-bold text-cyan-400">🎨 STEP 2: COLOR HUE & SATURATION CALIBRATION (In ${sw.targetLayer})</p>
-        <ul class="list-disc pl-4 space-y-1 text-gray-300">
-          ${colorGuides.map(g => `<li>${g}</li>`).join("") || '<li>Color temperature and foliage tint are balanced against target.</li>'}
-        </ul>
-      </div>
-    `);
-  }
-
-  // STEP 3: FINAL GRADE & LUT EXPORT
-  else if (currentStep === 2) {
-    cards.push(`
-      <div class="bg-purple-950/30 border border-purple-500/30 p-3 rounded-lg text-xs space-y-2">
-        <strong class="text-purple-300 block text-sm">🚀 STEP 3: FINAL GRADE EXPORT</strong>
-        <p class="text-purple-200/80">Click <strong>'Export 3D .CUBE LUT'</strong> above to generate your grade file. Import it directly into ${selectedSoftware} to apply the full color mapping instantly.</p>
-      </div>
-    `);
-  }
-
-  feedback.innerHTML = cards.join("");
-}
-// ==========================================
-// 8. 3D .CUBE LUT EXPORT ENGINE
+// 7. PRECISE 3D .CUBE LUT EXPORTER
 // ==========================================
 function export3DLUT() {
   if (!primaryImageData) {
@@ -557,30 +444,35 @@ function export3DLUT() {
   }
 
   const lutSize = 17;
-  const lines = [`# Color Director Generated 3D LUT`, `LUT_3D_SIZE ${lutSize}`, ``];
+  const lines = [`# Color Director Interactive Generated 3D LUT`, `LUT_3D_SIZE ${lutSize}`, ``];
 
-  const pData = primaryImageData.rawData;
-  let rSum = 0, gSum = 0, bSum = 0;
-  const count = pData.length / 16;
-  
-  for (let i = 0; i < pData.length; i += 16) {
-    rSum += pData[i]; gSum += pData[i + 1]; bSum += pData[i + 2];
-  }
-  
-  const rMult = (rSum / count) / 128;
-  const gMult = (gSum / count) / 128;
-  const bMult = (bSum / count) / 128;
+  const expMult = Math.pow(2, adjustState.exposure / 50);
+  const contrastFactor = (259 * (adjustState.contrast + 255)) / (255 * (259 - adjustState.contrast));
+  const tempOffset = adjustState.temp * 0.8;
+  const satMult = 1 + (adjustState.saturation / 100);
 
   for (let b = 0; b < lutSize; b++) {
     for (let g = 0; g < lutSize; g++) {
       for (let r = 0; r < lutSize; r++) {
-        const rIn = r / (lutSize - 1);
-        const gIn = g / (lutSize - 1);
-        const bIn = b / (lutSize - 1);
+        let rIn = (r / (lutSize - 1)) * 255;
+        let gIn = (g / (lutSize - 1)) * 255;
+        let bIn = (b / (lutSize - 1)) * 255;
 
-        const rOut = Math.min(1.0, Math.max(0.0, rIn * (1.1 - (rMult - 1.0)))).toFixed(6);
-        const gOut = Math.min(1.0, Math.max(0.0, gIn * (1.1 - (gMult - 1.0)))).toFixed(6);
-        const bOut = Math.min(1.0, Math.max(0.0, bIn * (1.1 - (bMult - 1.0)))).toFixed(6);
+        // Apply Sandbox Transformation Grid to LUT Nodes
+        rIn *= expMult; gIn *= expMult; bIn *= expMult;
+        rIn += tempOffset; bIn -= tempOffset;
+        rIn = contrastFactor * (rIn - 128) + 128;
+        gIn = contrastFactor * (gIn - 128) + 128;
+        bIn = contrastFactor * (bIn - 128) + 128;
+
+        const gray = 0.2126 * rIn + 0.7152 * gIn + 0.0722 * bIn;
+        rIn = gray + satMult * (rIn - gray);
+        gIn = gray + satMult * (gIn - gray);
+        bIn = gray + satMult * (bIn - gray);
+
+        const rOut = (Math.min(255, Math.max(0, rIn)) / 255).toFixed(6);
+        const gOut = (Math.min(255, Math.max(0, gIn)) / 255).toFixed(6);
+        const bOut = (Math.min(255, Math.max(0, bIn)) / 255).toFixed(6);
 
         lines.push(`${rOut} ${gOut} ${bOut}`);
       }
@@ -591,7 +483,7 @@ function export3DLUT() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "Color_Director_Grade.cube";
+  a.download = "Color_Director_CustomGrade.cube";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
