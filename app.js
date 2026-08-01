@@ -1,84 +1,83 @@
 // ==========================================
-// 1. APP STATE & SANDBOX ENGINE PARAMETERS
+// 1. APP STATE & MENTOR ENGINE CONFIG
 // ==========================================
 let primaryImageData = null;
 let referenceImageData = null;
 
-// Real-time Live Sandbox Adjustments State
 let adjustState = {
-  exposure: 0,     // -100 to 100
-  contrast: 0,     // -100 to 100
-  highlights: 0,   // -100 to 100
-  shadows: 0,      // -100 to 100
-  temp: 0,         // -100 (Cool) to 100 (Warm)
-  tint: 0,         // -100 (Green) to 100 (Magenta)
-  saturation: 0    // -100 (B&W) to 100 (Vibrant)
+  exposure: 0,
+  contrast: 0,
+  highlights: 0,
+  shadows: 0,
+  temp: 0,
+  saturation: 0
 };
 
-let activeTab = "sandbox"; // "sandbox" or "davinci"
+let activeTab = "mentor"; // "mentor" or "davinci"
 
 // ==========================================
-// 2. CORE UI LAYOUT ENGINE
+// 2. CORE UI RENDERING
 // ==========================================
 function renderApp() {
   const root = document.getElementById("root");
   if (!root) return;
 
   root.innerHTML = `
-    <div class="bg-gray-900 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl space-y-6">
+    <div class="bg-gray-950 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl space-y-6 text-white font-sans">
       
       <!-- Top Navigation Header -->
       <div class="flex flex-wrap justify-between items-center border-b border-gray-800 pb-4 gap-4">
         <div>
-          <h1 class="text-xl font-bold text-cyan-400">Color Director AI — Sandbox & Scope Master</h1>
-          <p class="text-xs text-gray-400 mt-1">Interactively grade shots, generate 3D LUTs, or master DaVinci Resolve scopes.</p>
+          <h1 class="text-xl font-bold text-cyan-400 flex items-center gap-2">
+            🎬 Color Director AI <span class="text-xs bg-cyan-950 text-cyan-300 border border-cyan-800 px-2 py-0.5 rounded-full font-semibold">Pro Mentor Engine</span>
+          </h1>
+          <p class="text-xs text-gray-400 mt-1">Professional Scope Analysis, Skin Calibration & Color Science Guidance</p>
         </div>
 
-        <!-- Engine Mode Switcher -->
-        <div class="flex bg-gray-950 p-1 rounded-xl border border-gray-800">
-          <button id="tabSandbox" onclick="switchTab('sandbox')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'sandbox' ? 'bg-cyan-600 text-white shadow' : 'text-gray-400 hover:text-white'}">
-            🎨 Interactive Live Sandbox
+        <div class="flex bg-gray-900 p-1 rounded-xl border border-gray-800">
+          <button id="tabMentor" onclick="switchTab('mentor')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'mentor' ? 'bg-cyan-600 text-white shadow' : 'text-gray-400 hover:text-white'}">
+            🧠 AI Mentor & Scopes
           </button>
           <button id="tabDaVinci" onclick="switchTab('davinci')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'davinci' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}">
-            🎬 DaVinci Scope Masterclass
+            📚 Industry Node Blueprint
           </button>
         </div>
       </div>
 
-      <!-- Image Upload Dropzones -->
+      <!-- Image Ingestion Dropzones -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div id="dropzonePrimary" class="border-2 border-dashed border-gray-700 hover:border-cyan-400 rounded-xl p-4 text-center transition cursor-pointer bg-gray-950/50">
+        <div id="dropzonePrimary" class="border-2 border-dashed border-gray-800 hover:border-cyan-400 rounded-xl p-4 text-center transition cursor-pointer bg-gray-900/40">
           <input type="file" id="filePrimary" accept="image/*" class="hidden" />
-          <p class="text-xs font-bold text-cyan-400 uppercase tracking-wide">📸 1. Upload Your Shot</p>
-          <p class="text-xs text-gray-400 mt-1">Drag & drop or click to load snapshot</p>
+          <p class="text-xs font-bold text-cyan-400 uppercase tracking-wide">📸 1. Your Frame / Shot</p>
+          <p class="text-xs text-gray-500 mt-1">Upload image for deep diagnostic analysis</p>
         </div>
 
-        <div id="dropzoneRef" class="border-2 border-dashed border-gray-700 hover:border-purple-400 rounded-xl p-4 text-center transition cursor-pointer bg-gray-950/50">
+        <div id="dropzoneRef" class="border-2 border-dashed border-gray-800 hover:border-purple-400 rounded-xl p-4 text-center transition cursor-pointer bg-gray-900/40">
           <input type="file" id="fileRef" accept="image/*" class="hidden" />
-          <p class="text-xs font-bold text-purple-400 uppercase tracking-wide">🎬 2. Target Reference (Optional)</p>
-          <p class="text-xs text-gray-400 mt-1">Compare target frame or movie still</p>
+          <p class="text-xs font-bold text-purple-400 uppercase tracking-wide">🎬 2. Reference Target (Optional)</p>
+          <p class="text-xs text-gray-500 mt-1">Upload a professional film still to match</p>
         </div>
       </div>
 
-      <!-- Main Dual Display & Vectorscope Suite -->
+      <!-- Main Display Suite -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-black/60 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[200px]">
-          <p class="text-xs text-cyan-400 mb-2 font-bold uppercase tracking-wider">Live Sandbox Canvas</p>
-          <canvas id="primaryCanvas" class="max-w-full max-h-[220px] object-contain rounded-lg"></canvas>
+        <div class="bg-gray-900/80 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[220px]">
+          <p class="text-[11px] text-cyan-400 mb-2 font-bold uppercase tracking-wider">Live Frame Preview</p>
+          <canvas id="primaryCanvas" class="max-w-full max-h-[200px] object-contain rounded-lg"></canvas>
         </div>
 
-        <div class="bg-black/60 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[200px]">
-          <p class="text-xs text-purple-400 mb-2 font-bold uppercase tracking-wider">Reference Look</p>
-          <canvas id="refCanvas" class="max-w-full max-h-[220px] object-contain rounded-lg"></canvas>
+        <div class="bg-gray-900/80 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[220px]">
+          <p class="text-[11px] text-purple-400 mb-2 font-bold uppercase tracking-wider">Reference Look Target</p>
+          <canvas id="refCanvas" class="max-w-full max-h-[200px] object-contain rounded-lg"></canvas>
         </div>
 
-        <div class="bg-black/60 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[200px]">
-          <p class="text-xs text-cyan-400 mb-2 font-bold uppercase tracking-wider">Live YUV Vectorscope</p>
-          <canvas id="vectorscopeCanvas" width="180" height="180" class="w-[180px] h-[180px] bg-gray-950 rounded-full border border-gray-800"></canvas>
+        <div class="bg-gray-900/80 rounded-xl p-3 border border-gray-800 flex flex-col items-center justify-center min-h-[220px]">
+          <p class="text-[11px] text-cyan-400 mb-2 font-bold uppercase tracking-wider">360° YUV Vectorscope Telemetry</p>
+          <canvas id="vectorscopeCanvas" width="180" height="180" class="w-[180px] h-[180px] bg-black rounded-full border border-gray-800"></canvas>
         </div>
       </div>
 
-      <!-- DYNAMIC CONTENT: SANDBOX SLIDERS vs DAVINCI MASTERCLASS -->
+      <!-- DYNAMIC CONTENT: AI MENTOR vs DAVINCI BLUEPRINT -->
       <div id="tabContent"></div>
 
     </div>
@@ -94,129 +93,113 @@ window.switchTab = function(tab) {
 };
 
 // ==========================================
-// 3. TAB RENDERING: SANDBOX vs DAVINCI MASTER
+// 3. TAB RENDERING & MENTOR ENGINE
 // ==========================================
 function renderTabContent() {
   const container = document.getElementById("tabContent");
   if (!container) return;
 
-  if (activeTab === "sandbox") {
+  if (activeTab === "mentor") {
     container.innerHTML = `
-      <div class="bg-gray-950 border border-cyan-500/30 p-5 rounded-2xl space-y-4">
-        <div class="flex justify-between items-center border-b border-gray-800 pb-3">
-          <p class="font-bold text-cyan-400 text-sm flex items-center gap-2">
-            🎛️ Real-Time Interactive Sandbox Controls
-          </p>
-          <div class="flex gap-2">
-            <button onclick="resetSliders()" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold border border-gray-700 transition">
-              🔄 Reset Sliders
-            </button>
-            <button onclick="export3DLUT()" class="px-3 py-1 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-bold border border-purple-500/30 transition">
-              💾 Export 3D .CUBE LUT
-            </button>
+      <div class="space-y-4">
+        
+        <!-- Live AI Diagnostic & Telemetry Feedback Box -->
+        <div class="bg-gray-900 border border-cyan-500/30 p-5 rounded-xl space-y-3">
+          <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+            <p class="font-bold text-cyan-400 text-sm flex items-center gap-2">
+              🧠 Senior Colorist AI Diagnosis & Technical Analysis
+            </p>
+            <span id="diagnosticBadge" class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-gray-800 text-gray-400">
+              Awaiting Image Data
+            </span>
+          </div>
+
+          <div id="mentorReport" class="text-xs text-gray-300 leading-relaxed space-y-2">
+            Upload a frame above. The AI Mentor will read scope telemetry, diagnose exposure/color flaws, and explain the exact color science behind fixing them.
           </div>
         </div>
 
-        <!-- Interactive Sliders Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-          
-          <!-- Exposure -->
-          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
-            <div class="flex justify-between font-bold text-gray-300">
-              <span>☀️ Exposure</span>
-              <span id="valExposure" class="text-cyan-400">${adjustState.exposure}</span>
+        <!-- Interactive Precision Calibration Sliders -->
+        <div class="bg-gray-900 border border-gray-800 p-5 rounded-xl space-y-4">
+          <div class="flex justify-between items-center border-b border-gray-800 pb-3">
+            <p class="font-bold text-gray-200 text-xs uppercase tracking-wider">🎛️ Interactive Calibration Sandbox</p>
+            <div class="flex gap-2">
+              <button onclick="resetSliders()" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-semibold border border-gray-700 transition">
+                🔄 Reset
+              </button>
+              <button onclick="export3DLUT()" class="px-3 py-1 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded text-xs font-bold border border-purple-500/30 transition">
+                💾 Export Industry 3D .CUBE LUT
+              </button>
             </div>
-            <input type="range" id="slideExposure" min="-100" max="100" value="${adjustState.exposure}" class="w-full accent-cyan-500 cursor-pointer" />
           </div>
 
-          <!-- Contrast -->
-          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
-            <div class="flex justify-between font-bold text-gray-300">
-              <span>☯️ Contrast</span>
-              <span id="valContrast" class="text-cyan-400">${adjustState.contrast}</span>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div class="bg-black/40 p-3 rounded-lg border border-gray-800 space-y-1">
+              <div class="flex justify-between font-semibold text-gray-300">
+                <span>Exposure (EV)</span>
+                <span id="valExposure" class="text-cyan-400">${adjustState.exposure}</span>
+              </div>
+              <input type="range" id="slideExposure" min="-100" max="100" value="${adjustState.exposure}" class="w-full accent-cyan-500 cursor-pointer" />
             </div>
-            <input type="range" id="slideContrast" min="-100" max="100" value="${adjustState.contrast}" class="w-full accent-cyan-500 cursor-pointer" />
-          </div>
 
-          <!-- Highlights -->
-          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
-            <div class="flex justify-between font-bold text-gray-300">
-              <span>🏔️ Highlights</span>
-              <span id="valHighlights" class="text-cyan-400">${adjustState.highlights}</span>
+            <div class="bg-black/40 p-3 rounded-lg border border-gray-800 space-y-1">
+              <div class="flex justify-between font-semibold text-gray-300">
+                <span>Contrast</span>
+                <span id="valContrast" class="text-cyan-400">${adjustState.contrast}</span>
+              </div>
+              <input type="range" id="slideContrast" min="-100" max="100" value="${adjustState.contrast}" class="w-full accent-cyan-500 cursor-pointer" />
             </div>
-            <input type="range" id="slideHighlights" min="-100" max="100" value="${adjustState.highlights}" class="w-full accent-cyan-500 cursor-pointer" />
-          </div>
 
-          <!-- Shadows -->
-          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
-            <div class="flex justify-between font-bold text-gray-300">
-              <span>🌑 Shadows</span>
-              <span id="valShadows" class="text-cyan-400">${adjustState.shadows}</span>
+            <div class="bg-black/40 p-3 rounded-lg border border-gray-800 space-y-1">
+              <div class="flex justify-between font-semibold text-gray-300">
+                <span>Temperature (Kelvin Offset)</span>
+                <span id="valTemp" class="text-cyan-400">${adjustState.temp}</span>
+              </div>
+              <input type="range" id="slideTemp" min="-100" max="100" value="${adjustState.temp}" class="w-full accent-amber-500 cursor-pointer" />
             </div>
-            <input type="range" id="slideShadows" min="-100" max="100" value="${adjustState.shadows}" class="w-full accent-cyan-500 cursor-pointer" />
-          </div>
 
-          <!-- Temperature -->
-          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
-            <div class="flex justify-between font-bold text-gray-300">
-              <span>🌡️ Temperature (Cool / Warm)</span>
-              <span id="valTemp" class="text-cyan-400">${adjustState.temp}</span>
+            <div class="bg-black/40 p-3 rounded-lg border border-gray-800 space-y-1">
+              <div class="flex justify-between font-semibold text-gray-300">
+                <span>Saturation</span>
+                <span id="valSaturation" class="text-cyan-400">${adjustState.saturation}</span>
+              </div>
+              <input type="range" id="slideSaturation" min="-100" max="100" value="${adjustState.saturation}" class="w-full accent-cyan-500 cursor-pointer" />
             </div>
-            <input type="range" id="slideTemp" min="-100" max="100" value="${adjustState.temp}" class="w-full accent-amber-500 cursor-pointer" />
           </div>
-
-          <!-- Saturation -->
-          <div class="bg-gray-900/80 p-3 rounded-xl border border-gray-800 space-y-1">
-            <div class="flex justify-between font-bold text-gray-300">
-              <span>🎨 Saturation</span>
-              <span id="valSaturation" class="text-cyan-400">${adjustState.saturation}</span>
-            </div>
-            <input type="range" id="slideSaturation" min="-100" max="100" value="${adjustState.saturation}" class="w-full accent-cyan-500 cursor-pointer" />
-          </div>
-
         </div>
+
       </div>
     `;
 
     bindSliderEvents();
   } else {
     container.innerHTML = `
-      <div class="bg-gray-950 border border-purple-500/30 p-5 rounded-2xl space-y-4 text-xs">
+      <div class="bg-gray-900 border border-purple-500/30 p-5 rounded-xl space-y-4 text-xs">
         <p class="font-bold text-purple-400 text-sm flex items-center gap-2">
-          🎬 Native DaVinci Resolve Masterclass: Reading Scopes Like a Pro
+          📚 Industry Node Architecture & Color Pipeline Guide
         </p>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Waveform Scope Guide -->
-          <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl space-y-2">
-            <h3 class="font-bold text-cyan-300 text-sm border-b border-gray-800 pb-1">1. The Waveform Scope (Luminance & Exposure)</h3>
-            <p class="text-gray-300 leading-relaxed">
-              Open DaVinci's Scope window (<code class="bg-black px-1 py-0.5 rounded text-amber-300">Workspace ➔ Scopes ➔ Waveform</code>).
+          <div class="bg-black/40 border border-gray-800 p-4 rounded-xl space-y-2">
+            <h3 class="font-bold text-cyan-300 text-xs uppercase tracking-wider">1. The Standard 4-Node Tree</h3>
+            <p class="text-gray-400 leading-relaxed">
+              Professional colorists in DaVinci Resolve never perform exposure, balancing, and creative grading on a single node. Always structure your pipeline sequentially:
             </p>
-            <ul class="list-disc pl-4 space-y-1.5 text-gray-400">
-              <li><strong class="text-white">1024 Line (Top):</strong> Pure white highlight clip zone. If signals smash against 1024, your sky or whites are permanently blown out.</li>
-              <li><strong class="text-white">400 - 600 Range (Middle):</strong> Where standard middle gray and skin tones belong.</li>
-              <li><strong class="text-white">0 Line (Bottom):</strong> Pure black. If trace data hits 0, shadow details are crushed. Adjust <code class="text-cyan-300">Lift</code> wheel until shadows sit comfortably around 64-128.</li>
-            </ul>
+            <div class="space-y-1.5 text-gray-300 mt-2">
+              <div class="bg-gray-900 p-2 rounded border border-gray-800"><strong class="text-cyan-400">Node 01 (Exposure/Recovery):</strong> Lift shadows, tame blown highlights, and recover sensor data.</div>
+              <div class="bg-gray-900 p-2 rounded border border-gray-800"><strong class="text-cyan-400">Node 02 (Balance & White Balance):</strong> Ensure neutral whites and align skin tones to 123° on the Vectorscope.</div>
+              <div class="bg-gray-900 p-2 rounded border border-gray-800"><strong class="text-cyan-400">Node 03 (Creative Look / LUT):</strong> Apply target grade, split-toning, or exported 3D .CUBE LUT.</div>
+              <div class="bg-gray-900 p-2 rounded border border-gray-800"><strong class="text-cyan-400">Node 04 (Spatial Polish):</strong> Add vignetting, film grain, or edge sharpening.</div>
+            </div>
           </div>
 
-          <!-- RGB Parade Guide -->
-          <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl space-y-2">
-            <h3 class="font-bold text-purple-300 text-sm border-b border-gray-800 pb-1">2. RGB Parade Scope (Color Balance)</h3>
-            <p class="text-gray-300 leading-relaxed">
-              Switch Scope to <code class="bg-black px-1 py-0.5 rounded text-amber-300">Parade (RGB)</code>. It separates your shot into Red, Green, and Blue columns.
-            </p>
-            <ul class="list-disc pl-4 space-y-1.5 text-gray-400">
-              <li><strong class="text-white">White Balance Calibration:</strong> If all 3 columns align at equal heights, your neutral whites/grays are perfectly balanced.</li>
-              <li><strong class="text-white">Warm / Sunset Grade:</strong> The Red column trace sits higher than Blue.</li>
-              <li><strong class="text-white">Cinematic Teal & Orange:</strong> Red trace sits high in midtones, Blue trace sits high in the bottom shadows.</li>
-            </ul>
+          <div class="bg-black/40 border border-gray-800 p-4 rounded-xl space-y-2">
+            <h3 class="font-bold text-purple-300 text-xs uppercase tracking-wider">2. Reading Scopes Like an Expert</h3>
+            <div class="space-y-2 text-gray-300">
+              <p><strong class="text-white">Waveform (Luminance):</strong> Keep key subject skin sitting between 45–55 IRE. Avoid hitting 0 IRE (crushed blacks) or 1023 IRE (clipped highlights).</p>
+              <p><strong class="text-white">Vectorscope (Chrominance):</strong> Human skin tone—regardless of ethnicity—sits precisely on the 123° Amber line (I-bar). Distance from center indicates saturation depth.</p>
+            </div>
           </div>
-        </div>
-
-        <div class="bg-purple-950/40 border border-purple-500/30 p-3 rounded-xl">
-          <strong class="text-purple-300 block">💡 Pro Colorist Workflow:</strong>
-          <span class="text-gray-300">Use Node 1 in DaVinci to balance the Waveform scope so no data hits 0 or 1024. Then, apply the 3D LUT exported from our Interactive Sandbox on Node 2!</span>
         </div>
       </div>
     `;
@@ -224,10 +207,106 @@ function renderTabContent() {
 }
 
 // ==========================================
-// 4. REAL-TIME PIXEL PROCESSING & SLIDERS
+// 4. MENTOR DIAGNOSTIC ENGINE (COLOR SCIENCE)
+// ==========================================
+function runDiagnosticEngine() {
+  const report = document.getElementById("mentorMentorReport") || document.getElementById("mentorReport");
+  const badge = document.getElementById("diagnosticBadge");
+  if (!report || !primaryImageData) return;
+
+  const pData = primaryImageData.rawData;
+  let pLumaSum = 0, rSum = 0, gSum = 0, bSum = 0;
+  let lowLumaCount = 0, highLumaCount = 0;
+  const sampleStep = 16;
+  const totalPixels = pData.length / sampleStep;
+
+  for (let i = 0; i < pData.length; i += sampleStep) {
+    const r = pData[i], g = pData[i + 1], b = pData[i + 2];
+    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+    rSum += r; gSum += g; bSum += b;
+    pLumaSum += luma;
+
+    if (luma < 20) lowLumaCount++;
+    if (luma > 235) highLumaCount++;
+  }
+
+  const avgLuma = pLumaSum / totalPixels;
+  const avgR = rSum / totalPixels;
+  const avgG = gSum / totalPixels;
+  const avgB = bSum / totalPixels;
+
+  let adviceCards = [];
+
+  // 1. Exposure Diagnosis & Cinematography Assessment
+  if (avgLuma < 45) {
+    if (badge) {
+      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-800";
+      badge.innerText = "Underexposed Frame";
+    }
+    adviceCards.push(`
+      <div class="bg-red-950/30 border border-red-500/30 p-3 rounded-lg space-y-1">
+        <p class="font-bold text-red-400">🌑 Technical Assessment: Low Key / Underexposed Scene</p>
+        <p class="text-gray-300">Average luminance is sitting at <strong>${avgLuma.toFixed(1)} / 255</strong>. Deep shadows are burying detail.</p>
+        <p class="text-gray-400 mt-1"><strong>Colorist Directive:</strong> In Node 1, lift your <em>Gamma / Midtones</em> by +0.8 EV and ease Lift up slightly to restore shadow detail without introducing digital noise.</p>
+      </div>
+    `);
+  } else if (avgLuma > 115) {
+    if (badge) {
+      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800";
+      badge.innerText = "High-Key / Overexposed";
+    }
+    adviceCards.push(`
+      <div class="bg-amber-950/30 border border-amber-500/30 p-3 rounded-lg space-y-1">
+        <p class="font-bold text-amber-400">☀️ Technical Assessment: High Key / Overexposed Scene</p>
+        <p class="text-gray-300">Average luminance is high (<strong>${avgLuma.toFixed(1)} / 255</strong>). Highlights are close to digital clipping.</p>
+        <p class="text-gray-400 mt-1"><strong>Colorist Directive:</strong> Lower <em>Highlights / Gain</em> to pull bright areas back below 90% scale before applying your primary look.</p>
+      </div>
+    `);
+  } else {
+    if (badge) {
+      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-green-950 text-green-400 border border-green-800";
+      badge.innerText = "Balanced Signal Range";
+    }
+    adviceCards.push(`
+      <div class="bg-green-950/30 border border-green-500/30 p-3 rounded-lg space-y-1">
+        <p class="font-bold text-green-400">✅ Exposure Assessment: Well-Balanced Primary Signal</p>
+        <p class="text-gray-300">Mean brightness sits comfortably at <strong>${avgLuma.toFixed(1)} / 255</strong>. Signal distribution is ready for creative color grading.</p>
+      </div>
+    `);
+  }
+
+  // 2. Color Balance & Chrominance Telemetry
+  const warmCoolDelta = avgR - avgB;
+  if (Math.abs(warmCoolDelta) > 12) {
+    const toneType = warmCoolDelta > 0 ? "Warm Amber / Red" : "Cool Cyan / Blue";
+    adviceCards.push(`
+      <div class="bg-gray-900 border border-gray-800 p-3 rounded-lg space-y-1">
+        <p class="font-bold text-cyan-400">🎨 Color Temperature Bias: ${toneType}</p>
+        <p class="text-gray-300">The primary signal skews toward <strong>${toneType}</strong>.</p>
+        <p class="text-gray-400 mt-1"><strong>Cinematography Tip:</strong> If this is an intentional sunset/golden-hour shot, maintain the bias. If shooting neutral daylight, adjust white balance on Node 2 to center the vectorscope scatter.</p>
+      </div>
+    `);
+  }
+
+  // 3. Reference Frame Delta Matching (If reference frame exists)
+  if (referenceImageData) {
+    adviceCards.push(`
+      <div class="bg-purple-950/30 border border-purple-500/30 p-3 rounded-lg space-y-1">
+        <p class="font-bold text-purple-300">🎬 Reference Matching Target Active</p>
+        <p class="text-gray-300">Reference image loaded. Use the Interactive Calibration Sliders below or click <strong>Export Industry 3D .CUBE LUT</strong> to bake the visual translation into a LUT file.</p>
+      </div>
+    `);
+  }
+
+  report.innerHTML = adviceCards.join("");
+}
+
+// ==========================================
+// 5. SLIDERS & PIXEL RENDERING ENGINE
 // ==========================================
 function bindSliderEvents() {
-  const sliders = ["Exposure", "Contrast", "Highlights", "Shadows", "Temp", "Saturation"];
+  const sliders = ["Exposure", "Contrast", "Temp", "Saturation"];
   sliders.forEach(s => {
     const el = document.getElementById(`slide${s}`);
     const valEl = document.getElementById(`val${s}`);
@@ -236,8 +315,6 @@ function bindSliderEvents() {
         const val = parseInt(e.target.value);
         adjustState[s.toLowerCase()] = val;
         if (valEl) valEl.innerText = val;
-        
-        // Debounced non-blocking render on animation frame
         requestAnimationFrame(applySandboxPipeline);
       };
     }
@@ -245,7 +322,7 @@ function bindSliderEvents() {
 }
 
 window.resetSliders = function() {
-  adjustState = { exposure: 0, contrast: 0, highlights: 0, shadows: 0, temp: 0, tint: 0, saturation: 0 };
+  adjustState = { exposure: 0, contrast: 0, highlights: 0, shadows: 0, temp: 0, saturation: 0 };
   renderApp();
 };
 
@@ -262,38 +339,28 @@ function applySandboxPipeline() {
   const data = imgData.data;
   const raw = primaryImageData.rawData;
 
-  // Real-Time Slider Adjustments Math
-  const expMult = Math.pow(2, adjustState.exposure / 50); // Exposure EV scale
+  const expMult = Math.pow(2, adjustState.exposure / 50);
   const contrastFactor = (259 * (adjustState.contrast + 255)) / (255 * (259 - adjustState.contrast));
   const tempOffset = adjustState.temp * 0.8;
   const satMult = 1 + (adjustState.saturation / 100);
 
   for (let i = 0; i < raw.length; i += 4) {
-    let r = raw[i];
-    let g = raw[i + 1];
-    let b = raw[i + 2];
+    let r = raw[i] * expMult;
+    let g = raw[i + 1] * expMult;
+    let b = raw[i + 2] * expMult;
 
-    // 1. Exposure
-    r *= expMult;
-    g *= expMult;
-    b *= expMult;
-
-    // 2. Temperature (Cool / Warm)
     r += tempOffset;
     b -= tempOffset;
 
-    // 3. Contrast
     r = contrastFactor * (r - 128) + 128;
     g = contrastFactor * (g - 128) + 128;
     b = contrastFactor * (b - 128) + 128;
 
-    // 4. Saturation
     const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     r = gray + satMult * (r - gray);
     g = gray + satMult * (g - gray);
     b = gray + satMult * (b - gray);
 
-    // Clamp values [0, 255]
     data[i]     = Math.min(255, Math.max(0, r));
     data[i + 1] = Math.min(255, Math.max(0, g));
     data[i + 2] = Math.min(255, Math.max(0, b));
@@ -301,13 +368,11 @@ function applySandboxPipeline() {
   }
 
   ctx.putImageData(imgData, 0, 0);
-
-  // Dynamically update vectorscope based on edited image data
   drawVectorscope(imgData);
 }
 
 // ==========================================
-// 5. ASYNCHRONOUS FILE INGESTION
+// 6. ASYNCHRONOUS FILE INGESTION & VECTORSCOPE
 // ==========================================
 function attachEventListeners() {
   bindDropzone("dropzonePrimary", "filePrimary", (file) => processImageFile(file, 'primary'));
@@ -360,8 +425,10 @@ function processImageFile(file, type) {
       if (type === 'primary') {
         primaryImageData = { img, imageData, rawData: new Uint8ClampedArray(imageData.data) };
         applySandboxPipeline();
+        runDiagnosticEngine();
       } else {
         referenceImageData = { img, imageData };
+        runDiagnosticEngine();
       }
     };
     img.src = event.target.result;
@@ -372,6 +439,7 @@ function processImageFile(file, type) {
 function restoreCanvasState() {
   if (primaryImageData) {
     applySandboxPipeline();
+    runDiagnosticEngine();
   }
 
   if (referenceImageData) {
@@ -385,9 +453,6 @@ function restoreCanvasState() {
   }
 }
 
-// ==========================================
-// 6. VECTORSCOPE ENGINE
-// ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
   if (!canvas) return;
@@ -444,7 +509,7 @@ function export3DLUT() {
   }
 
   const lutSize = 17;
-  const lines = [`# Color Director Interactive Generated 3D LUT`, `LUT_3D_SIZE ${lutSize}`, ``];
+  const lines = [`# Color Director Pro Generated 3D LUT`, `LUT_3D_SIZE ${lutSize}`, ``];
 
   const expMult = Math.pow(2, adjustState.exposure / 50);
   const contrastFactor = (259 * (adjustState.contrast + 255)) / (255 * (259 - adjustState.contrast));
@@ -458,7 +523,6 @@ function export3DLUT() {
         let gIn = (g / (lutSize - 1)) * 255;
         let bIn = (b / (lutSize - 1)) * 255;
 
-        // Apply Sandbox Transformation Grid to LUT Nodes
         rIn *= expMult; gIn *= expMult; bIn *= expMult;
         rIn += tempOffset; bIn -= tempOffset;
         rIn = contrastFactor * (rIn - 128) + 128;
@@ -483,7 +547,7 @@ function export3DLUT() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "Color_Director_CustomGrade.cube";
+  a.download = "Color_Director_ProGrade.cube";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
