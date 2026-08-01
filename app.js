@@ -3,28 +3,34 @@
 // ==========================================
 const STEPS = [
   {
-    title: "1. Exposure & False Color Inspection",
-    instruction: "Upload your shot and reference image. Toggle 'False Color Mode' to visually map exposure zones in IRE values.",
-    action: "Exposure Mapping",
-    tip: "Purple = Underexposed (<3 IRE), Green = Middle Gray (18% / ~42 IRE), Red = Blown Highlights (>100 IRE)."
+    title: "1. Exposure & Shadow Check",
+    instruction: "Upload your shot. Toggle False Color to see if your shot is too bright, too dark, or balanced.",
+    action: "Exposure Assessment"
   },
   {
-    title: "2. Vectorscope & Skin Tone Alignment",
-    instruction: "Check the 360° YUV Vectorscope. Ensure your subject's skin tones align with the standard 123° Skin Tone Indicator Line.",
-    action: "Hue Calibration",
-    tip: "Human skin tone (regardless of ethnicity) falls precisely along the I-bar line between Red and Yellow on a vectorscope."
+    title: "2. Color Mood & Skin Tone Matching",
+    instruction: "Choose a target Mood Preset below OR upload a reference image to get exact slider recommendations.",
+    action: "Mood Calibration"
   },
   {
-    title: "3. Split-Screen Mood Matching & LUT Export",
-    instruction: "Compare channel distribution deltas against your reference frame, then export a generated 3D .cube LUT.",
-    action: "Grade Export",
-    tip: "A 3D LUT maps RGB input values to target RGB output values, allowing instant grade transfer into DaVinci/Premiere."
+    title: "3. Export Grade for DaVinci / Premiere / Lightroom",
+    instruction: "Follow the plain-English slider steps or click 'Export 3D .CUBE LUT' to apply the grade in one click.",
+    action: "Grade Export"
   }
 ];
+
+// Presets for creators without a reference photo
+const MOOD_PRESETS = {
+  cinematic: { name: "🎬 Moody Cinematic", lumaTarget: 80, warmBias: -10, description: "Lowered exposure, deep shadows, cool/teal midtones." },
+  golden: { name: "🌅 Golden Hour", lumaTarget: 110, warmBias: 25, description: "Warm golden highlights, soft contrast, glowing skin." },
+  tealOrange: { name: "🎨 Teal & Orange", lumaTarget: 95, warmBias: 15, description: "Punchy contrast, warm skin, cool cyan background." },
+  vintage: { name: "📸 Vintage Film", lumaTarget: 105, warmBias: 10, description: "Faded blacks, warm cream highlights, classic film feel." }
+};
 
 let currentStep = 0;
 let primaryImageData = null;
 let referenceImageData = null;
+let activePreset = null;
 let isFalseColorActive = false;
 
 // ==========================================
@@ -41,118 +47,90 @@ function renderApp() {
       
       <!-- Header -->
       <div class="flex justify-between items-center">
-        <h1 class="text-xl font-bold text-cyan-400">${step.title}</h1>
+        <div>
+          <h1 class="text-xl font-bold text-cyan-400">${step.title}</h1>
+          <p class="text-xs text-gray-400 mt-0.5">${step.instruction}</p>
+        </div>
         <span class="bg-cyan-950 text-cyan-300 text-xs px-3 py-1 rounded-full font-bold">
           ${step.action}
         </span>
       </div>
 
-      <!-- Dual Dropzone (Split-Screen Ingestion) -->
+      <!-- Image Ingestion Dropzones -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        
-        <!-- Primary Shot Dropzone -->
-        <div 
-          id="dropzonePrimary"
-          class="border-2 border-dashed border-gray-700 hover:border-cyan-400 rounded-xl p-4 text-center transition-all cursor-pointer bg-gray-950/50"
-        >
+        <div id="dropzonePrimary" class="border-2 border-dashed border-gray-700 hover:border-cyan-400 rounded-xl p-4 text-center transition-all cursor-pointer bg-gray-950/50">
           <input type="file" id="filePrimary" accept="image/*" class="hidden" />
-          <p class="text-xs font-bold text-cyan-400 uppercase tracking-wide">📸 1. Your Shot</p>
+          <p class="text-xs font-bold text-cyan-400 uppercase tracking-wide">📸 1. Your Shot (Required)</p>
           <p class="text-xs text-gray-400 mt-1">Drag & drop or click to upload</p>
         </div>
 
-        <!-- Reference Shot Dropzone -->
-        <div 
-          id="dropzoneRef"
-          class="border-2 border-dashed border-gray-700 hover:border-purple-400 rounded-xl p-4 text-center transition-all cursor-pointer bg-gray-950/50"
-        >
+        <div id="dropzoneRef" class="border-2 border-dashed border-gray-700 hover:border-purple-400 rounded-xl p-4 text-center transition-all cursor-pointer bg-gray-950/50">
           <input type="file" id="fileRef" accept="image/*" class="hidden" />
-          <p class="text-xs font-bold text-purple-400 uppercase tracking-wide">🎬 2. Reference Frame (Target Look)</p>
-          <p class="text-xs text-gray-400 mt-1">Drag & drop movie screenshot / reference</p>
+          <p class="text-xs font-bold text-purple-400 uppercase tracking-wide">🎬 2. Reference Image (Optional)</p>
+          <p class="text-xs text-gray-400 mt-1">Drop a movie still or look you want to copy</p>
         </div>
-
       </div>
 
-      <!-- Controls Toolbar -->
+      <!-- Creator Presets (If no reference image is available) -->
+      <div class="bg-gray-950/60 p-3 rounded-xl border border-gray-800 space-y-2">
+        <p class="text-xs font-bold text-gray-400">OR SELECT A DREAM MOOD PRESET:</p>
+        <div class="flex flex-wrap gap-2">
+          ${Object.keys(MOOD_PRESETS).map(key => `
+            <button 
+              onclick="selectPreset('${key}')" 
+              class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${activePreset === key ? 'bg-cyan-600 text-white border-cyan-400' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'}"
+            >
+              ${MOOD_PRESETS[key].name}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Toolbar Controls -->
       <div id="toolbar" class="flex flex-wrap gap-2 items-center justify-between border-t border-b border-gray-800 py-3">
-        <button 
-          id="toggleFalseColor" 
-          class="px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition"
-        >
-          🎨 ${isFalseColorActive ? 'Disable False Color' : 'Toggle False Color Mode'}
+        <button id="toggleFalseColor" class="px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition">
+          🎨 ${isFalseColorActive ? 'Disable False Color' : 'Toggle Visual Exposure Map'}
         </button>
 
-        <button 
-          id="exportLUT" 
-          class="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-semibold border border-purple-500/30 transition"
-        >
-          💾 Export 3D .CUBE LUT
+        <button id="exportLUT" class="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-semibold border border-purple-500/30 transition">
+          💾 Export 3D .CUBE LUT (DaVinci/Premiere)
         </button>
       </div>
 
-      <!-- Canvas Display Suite -->
+      <!-- Preview Displays -->
       <div id="previewContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        
-        <!-- Primary View -->
         <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center">
           <p class="text-xs text-gray-400 mb-2 font-semibold">YOUR SHOT</p>
           <canvas id="primaryCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg"></canvas>
         </div>
 
-        <!-- Reference View -->
         <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center">
-          <p class="text-xs text-purple-400 mb-2 font-semibold">REFERENCE LOOK</p>
+          <p class="text-xs text-purple-400 mb-2 font-semibold">TARGET REFERENCE</p>
           <canvas id="refCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg"></canvas>
         </div>
 
-        <!-- YUV Vectorscope View -->
         <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center">
-          <p class="text-xs text-cyan-400 mb-2 font-semibold">360° YUV VECTORSCOPE</p>
+          <p class="text-xs text-cyan-400 mb-2 font-semibold">COLOR DISTRIBUTION</p>
           <canvas id="vectorscopeCanvas" width="180" height="180" class="w-[180px] h-[180px] bg-gray-950 rounded-full border border-gray-800"></canvas>
         </div>
-
       </div>
 
-      <!-- Histograms Container -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800">
-          <p class="text-xs text-gray-400 mb-1 font-semibold text-center">YOUR HISTOGRAM</p>
-          <canvas id="primaryHist" width="256" height="100" class="w-full h-[100px] bg-gray-950 rounded border border-gray-800"></canvas>
-        </div>
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800">
-          <p class="text-xs text-purple-400 mb-1 font-semibold text-center">REFERENCE HISTOGRAM</p>
-          <canvas id="refHist" width="256" height="100" class="w-full h-[100px] bg-gray-950 rounded border border-gray-800"></canvas>
+      <!-- Real-World Creator Assistant Box -->
+      <div id="critiqueBox" class="bg-gray-950 border border-cyan-500/30 p-4 rounded-xl text-xs space-y-3">
+        <p class="font-bold text-cyan-400 text-sm flex items-center gap-1.5">
+          <span>🪄</span> Plain-English Creator Action Plan:
+        </p>
+        <div id="critiqueFeedback" class="text-gray-300 space-y-2 leading-relaxed">
+          Upload a shot above to get exact slider recommendations for DaVinci, Lightroom, or Premiere.
         </div>
       </div>
 
-      <!-- Live Pixel Critique & Delta Analysis Output -->
-      <div id="critiqueBox" class="bg-gray-950 border border-gray-800 p-4 rounded-xl text-xs space-y-2">
-        <p class="font-bold text-cyan-400">📊 Enterprise Diagnostic & Delta Analysis:</p>
-        <div id="critiqueFeedback" class="text-gray-300 leading-relaxed">
-          Upload images to trigger real-time delta matching and skin-tone analysis.
-        </div>
-      </div>
-
-      <!-- Step Instructions & Tip -->
-      <p class="text-sm text-gray-200">${step.instruction}</p>
-
-      <div class="bg-gray-800/80 border-l-4 border-cyan-500 p-3 rounded text-xs text-gray-300">
-        💡 <strong>Colorist Tip:</strong> ${step.tip}
-      </div>
-
-      <!-- Navigation Buttons -->
+      <!-- Navigation -->
       <div class="flex justify-between pt-2">
-        <button 
-          id="prevBtn" 
-          ${currentStep === 0 ? 'disabled' : ''} 
-          class="px-4 py-2 bg-gray-800 rounded-lg text-sm disabled:opacity-30 hover:bg-gray-700 transition"
-        >
-          Previous
+        <button id="prevBtn" ${currentStep === 0 ? 'disabled' : ''} class="px-4 py-2 bg-gray-800 rounded-lg text-sm disabled:opacity-30 hover:bg-gray-700 transition">
+          Previous Step
         </button>
-        <button 
-          id="nextBtn" 
-          ${currentStep === STEPS.length - 1 ? 'disabled' : ''} 
-          class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-sm font-bold text-white disabled:opacity-30 transition"
-        >
+        <button id="nextBtn" ${currentStep === STEPS.length - 1 ? 'disabled' : ''} class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-sm font-bold text-white disabled:opacity-30 transition">
           Next Step
         </button>
       </div>
@@ -163,8 +141,14 @@ function renderApp() {
   restoreCanvasState();
 }
 
+// Global scope window assignment for preset selector button
+window.selectPreset = function(key) {
+  activePreset = key;
+  renderApp();
+};
+
 // ==========================================
-// 3. FILE INGESTION & EVENT BINDINGS
+// 3. EVENT BINDINGS
 // ==========================================
 function attachEventListeners() {
   bindDropzone("dropzonePrimary", "filePrimary", (file) => processImageFile(file, 'primary'));
@@ -176,23 +160,8 @@ function attachEventListeners() {
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
 
-  if (prevBtn) {
-    prevBtn.onclick = () => {
-      if (currentStep > 0) {
-        currentStep--;
-        requestAnimationFrame(() => renderApp());
-      }
-    };
-  }
-
-  if (nextBtn) {
-    nextBtn.onclick = () => {
-      if (currentStep < STEPS.length - 1) {
-        currentStep++;
-        requestAnimationFrame(() => renderApp());
-      }
-    };
-  }
+  if (prevBtn) prevBtn.onclick = () => { if (currentStep > 0) { currentStep--; requestAnimationFrame(renderApp); } };
+  if (nextBtn) nextBtn.onclick = () => { if (currentStep < STEPS.length - 1) { currentStep++; requestAnimationFrame(renderApp); } };
 }
 
 function bindDropzone(dropzoneId, inputId, callback) {
@@ -214,7 +183,7 @@ function bindDropzone(dropzoneId, inputId, callback) {
 }
 
 // ==========================================
-// 4. IMAGE PROCESSING & CANVAS RESTORATION
+// 4. IMAGE PROCESSING ENGINE
 // ==========================================
 function processImageFile(file, type) {
   if (!file || !file.type.startsWith("image/")) return;
@@ -236,20 +205,15 @@ function processImageFile(file, type) {
       const imageData = ctx.getImageData(0, 0, img.width, img.height);
 
       if (type === 'primary') {
-        primaryImageData = { 
-          img, 
-          imageData, 
-          rawData: new Uint8ClampedArray(imageData.data) 
-        };
+        primaryImageData = { img, imageData, rawData: new Uint8ClampedArray(imageData.data) };
         isFalseColorActive = false;
-        drawHistogram(imageData, 'primaryHist');
         drawVectorscope(imageData);
       } else {
         referenceImageData = { img, imageData };
-        drawHistogram(imageData, 'refHist');
+        activePreset = null; // Reference image overrides preset selection
       }
 
-      runEnterpriseAnalysis();
+      runHumanAnalysis();
     };
     img.src = event.target.result;
   };
@@ -269,8 +233,6 @@ function restoreCanvasState() {
       } else {
         ctx.putImageData(primaryImageData.imageData, 0, 0);
       }
-      
-      drawHistogram(primaryImageData.imageData, 'primaryHist');
       drawVectorscope(primaryImageData.imageData);
     }
   }
@@ -282,17 +244,14 @@ function restoreCanvasState() {
       refCanvas.width = referenceImageData.img.width;
       refCanvas.height = referenceImageData.img.height;
       ctx.putImageData(referenceImageData.imageData, 0, 0);
-      drawHistogram(referenceImageData.imageData, 'refHist');
     }
   }
 
-  if (primaryImageData || referenceImageData) {
-    runEnterpriseAnalysis();
-  }
+  if (primaryImageData) runHumanAnalysis();
 }
 
 // ==========================================
-// 5. FALSE COLOR ENGINE
+// 5. VISUAL EXPOSURE MAP ENGINE
 // ==========================================
 function toggleFalseColorMode() {
   if (!primaryImageData) return;
@@ -312,7 +271,7 @@ function toggleFalseColorMode() {
   const btn = document.getElementById("toggleFalseColor");
   if (btn) {
     btn.className = `px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition`;
-    btn.innerText = isFalseColorActive ? "🎨 Disable False Color" : "🎨 Toggle False Color Mode";
+    btn.innerText = isFalseColorActive ? "🎨 Disable Visual Exposure Map" : "🎨 Toggle Visual Exposure Map";
   }
 }
 
@@ -325,16 +284,15 @@ function applyFalseColorToCanvas(ctx, width, height) {
     const r = raw[i];
     const g = raw[i + 1];
     const b = raw[i + 2];
-    
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-    if (luma >= 250) {
+    if (luma >= 250) { // Clipped Highlights -> Red
       targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
-    } else if (luma >= 100 && luma <= 115) {
+    } else if (luma >= 100 && luma <= 115) { // Skin Tone Highs -> Pink
       targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
-    } else if (luma >= 40 && luma <= 48) {
+    } else if (luma >= 40 && luma <= 48) { // Midtones -> Green
       targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
-    } else if (luma <= 10) {
+    } else if (luma <= 10) { // Shadow Detail Lost -> Purple
       targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
     } else {
       targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
@@ -346,7 +304,7 @@ function applyFalseColorToCanvas(ctx, width, height) {
 }
 
 // ==========================================
-// 6. 360° YUV VECTORSCOPE
+// 6. VECTORSCOPE DISPLAY
 // ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
@@ -369,6 +327,7 @@ function drawVectorscope(imageData) {
   ctx.moveTo(5, center); ctx.lineTo(size - 5, center);
   ctx.stroke();
 
+  // 123° Skin Tone Line
   const skinAngle = (123 * Math.PI) / 180;
   ctx.strokeStyle = "#f59e0b"; 
   ctx.lineWidth = 2;
@@ -378,9 +337,7 @@ function drawVectorscope(imageData) {
   ctx.stroke();
 
   const pixels = imageData.data;
-  const totalPixels = pixels.length / 4;
-  const step = Math.max(4, Math.floor(totalPixels / 15000)) * 4;
-
+  const step = Math.max(4, Math.floor((pixels.length / 4) / 15000)) * 4;
   ctx.fillStyle = "rgba(6, 182, 212, 0.35)";
 
   for (let i = 0; i < pixels.length; i += step) {
@@ -399,112 +356,76 @@ function drawVectorscope(imageData) {
 }
 
 // ==========================================
-// 7. HISTOGRAM ENGINE
+// 7. REAL-WORLD HUMAN ANALYSIS ENGINE
 // ==========================================
-function drawHistogram(imageData, canvasId) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const width = canvas.width;
-  const height = canvas.height;
-
-  const pixels = imageData.data;
-  const rBin = new Uint32Array(256);
-  const gBin = new Uint32Array(256);
-  const bBin = new Uint32Array(256);
-
-  for (let i = 0; i < pixels.length; i += 16) {
-    rBin[pixels[i]]++;
-    gBin[pixels[i + 1]]++;
-    bBin[pixels[i + 2]]++;
-  }
-
-  let maxCount = 1;
-  for (let i = 0; i < 256; i++) {
-    if (rBin[i] > maxCount) maxCount = rBin[i];
-    if (gBin[i] > maxCount) maxCount = gBin[i];
-    if (bBin[i] > maxCount) maxCount = bBin[i];
-  }
-
-  ctx.clearRect(0, 0, width, height);
-
-  const drawChannel = (bin, color) => {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(0, height);
-    for (let x = 0; x < 256; x++) {
-      const barHeight = (bin[x] / maxCount) * height;
-      ctx.lineTo(x, height - barHeight);
-    }
-    ctx.lineTo(256, height);
-    ctx.closePath();
-    ctx.fill();
-  };
-
-  ctx.globalCompositeOperation = "screen";
-  drawChannel(rBin, "rgba(239, 68, 68, 0.5)");
-  drawChannel(gBin, "rgba(34, 197, 94, 0.5)");
-  drawChannel(bBin, "rgba(59, 130, 246, 0.5)");
-  ctx.globalCompositeOperation = "source-over";
-}
-
-// ==========================================
-// 8. DELTA ANALYSIS & MOOD MATCHING
-// ==========================================
-function runEnterpriseAnalysis() {
+function runHumanAnalysis() {
   const feedback = document.getElementById("critiqueFeedback");
   if (!feedback || !primaryImageData) return;
 
-  let report = [];
-
   const pData = primaryImageData.rawData;
-  let pLumaSum = 0;
+  let pLumaSum = 0, rSum = 0, gSum = 0, bSum = 0;
   const sampleStep = 16;
   const sampleCount = pData.length / sampleStep;
 
   for (let i = 0; i < pData.length; i += sampleStep) {
+    rSum += pData[i]; gSum += pData[i + 1]; bSum += pData[i + 2];
     pLumaSum += (0.2126 * pData[i] + 0.7152 * pData[i + 1] + 0.0722 * pData[i + 2]);
   }
-  const pAvgLuma = (pLumaSum / sampleCount).toFixed(1);
 
-  report.push(`📸 <strong>Your Shot Avg Exposure:</strong> ${pAvgLuma} / 255 IRE.`);
+  const pAvgLuma = pLumaSum / sampleCount;
+  let steps = [];
+
+  // Determine Target (from Reference image OR Preset)
+  let targetLuma = 100;
+  let targetMoodName = "Standard Balance";
+  let targetWarmth = 0;
 
   if (referenceImageData) {
     const rData = referenceImageData.imageData.data;
-    let rLumaSum = 0;
-    let rRedSum = 0, rBlueSum = 0;
+    let rLumaSum = 0, rRedSum = 0, rBlueSum = 0;
     const rSampleCount = rData.length / sampleStep;
-    
+
     for (let i = 0; i < rData.length; i += sampleStep) {
-      rRedSum += rData[i];
-      rBlueSum += rData[i + 2];
+      rRedSum += rData[i]; rBlueSum += rData[i + 2];
       rLumaSum += (0.2126 * rData[i] + 0.7152 * rData[i + 1] + 0.0722 * rData[i + 2]);
     }
-
-    const rAvgLuma = (rLumaSum / rSampleCount).toFixed(1);
-    const lumaDelta = (rAvgLuma - pAvgLuma).toFixed(1);
-
-    if (Math.abs(lumaDelta) > 15) {
-      const direction = lumaDelta > 0 ? "boost" : "reduce";
-      report.push(`🎯 <strong>Luminance Delta Gap:</strong> Reference is ${Math.abs(lumaDelta)} units brighter. ${direction.toUpperCase()} exposure/offset to match target look.`);
-    } else {
-      report.push(`✅ <strong>Exposure Matched:</strong> Luminance closely matches your reference frame.`);
-    }
-
-    if (rRedSum > rBlueSum) {
-      report.push(`🎨 <strong>Target Grade Mood:</strong> Reference relies on warm split-toning (Red/Orange bias). Push midtone wheels toward 60° Amber.`);
-    } else {
-      report.push(`🎨 <strong>Target Grade Mood:</strong> Reference skews cool/teal. Push shadow wheels toward 210° Cyan.`);
-    }
-  } else {
-    report.push(`💡 <em>Upload a Reference Frame above to unlock Delta Matching & Mood Target Guidance.</em>`);
+    targetLuma = rLumaSum / rSampleCount;
+    targetWarmth = (rRedSum - rBlueSum) / rSampleCount;
+    targetMoodName = "Target Reference Frame";
+  } else if (activePreset && MOOD_PRESETS[activePreset]) {
+    const p = MOOD_PRESETS[activePreset];
+    targetLuma = p.lumaTarget;
+    targetWarmth = p.warmBias;
+    targetMoodName = p.name;
   }
 
-  feedback.innerHTML = report.map(item => `<p class="mb-1">${item}</p>`).join("");
+  // 1. Exposure & Contrast Guidance
+  const lumaDiff = targetLuma - pAvgLuma;
+  if (lumaDiff < -15) {
+    steps.push(`☀️ <strong>Step 1 (Exposure):</strong> Your shot is too bright for the <em>${targetMoodName}</em> look. <strong>Turn EXPOSURE down</strong> (around -0.40 to -0.70) and lower <strong>SHADOWS</strong>.`);
+  } else if (lumaDiff > 15) {
+    steps.push(`🔆 <strong>Step 1 (Exposure):</strong> Your shot is too dark. <strong>Boost EXPOSURE</strong> slightly (+0.30 to +0.50) and lift midtones.`);
+  } else {
+    steps.push(`✅ <strong>Step 1 (Exposure):</strong> Brightness looks great! Keep overall exposure as-is.`);
+  }
+
+  // 2. Color Balance Guidance
+  if (targetWarmth > 10) {
+    steps.push(`🔥 <strong>Step 2 (Color Mood):</strong> Move your <strong>TEMPERATURE slider toward Warm/Yellow (+10 to +15)</strong>. In DaVinci, nudge your Gamma/Midtone wheel toward Orange.`);
+  } else if (targetWarmth < -10) {
+    steps.push(`❄️ <strong>Step 2 (Color Mood):</strong> Move your <strong>TEMPERATURE slider toward Cool/Blue (-10 to -15)</strong>. Push your Lift/Shadow wheel toward Teal.`);
+  } else {
+    steps.push(`🎨 <strong>Step 2 (Color Mood):</strong> Color temperature is well-balanced.`);
+  }
+
+  // 3. Quick Action Summary
+  steps.push(`💡 <strong>Fast Track:</strong> Click <strong>"Export 3D .CUBE LUT"</strong> above and drag the downloaded file straight onto your node in DaVinci Resolve or Lightroom!`);
+
+  feedback.innerHTML = steps.map(item => `<div class="bg-gray-900 p-2.5 rounded-lg border border-gray-800">${item}</div>`).join("");
 }
 
 // ==========================================
-// 9. 3D .CUBE LUT EXPORT ENGINE
+// 8. 3D .CUBE LUT EXPORT ENGINE
 // ==========================================
 function export3DLUT() {
   if (!primaryImageData) {
@@ -554,23 +475,9 @@ function export3DLUT() {
   URL.revokeObjectURL(url);
 }
 
-// ==========================================
-// 10. SELF-HEALING FAILSAFE
-// ==========================================
+// Initial rendering initialization
 try {
   renderApp();
 } catch (err) {
-  console.error("App error encountered:", err);
-  const root = document.getElementById("root");
-  if (root) {
-    root.innerHTML = `
-      <div class="p-6 bg-red-950/80 border border-red-500 rounded-2xl text-center text-white">
-        <p class="font-bold text-red-400">Pipeline Recovered From Error</p>
-        <p class="text-xs text-gray-300 mt-1 mb-4">${err.message}</p>
-        <button onclick="location.reload()" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-xs font-semibold">
-          Reload Engine
-        </button>
-      </div>
-    `;
-  }
+  console.error("App initialization error:", err);
 }
