@@ -4,7 +4,7 @@
 const STEPS = [
   {
     title: "Step 1: Exposure Assessment & Detail Recovery",
-    instruction: "Upload your shot. The app will inspect pixel luma data and tell you if overexposure recovery is required.",
+    instruction: "Upload your shot. The app will inspect pixel luma data and tell you if exposure recovery is required.",
     action: "Exposure Assessment"
   },
   {
@@ -207,7 +207,7 @@ function bindDropzone(dropzoneId, inputId, callback) {
 }
 
 // ==========================================
-// 4. ASYNCHRONOUS IMAGE ENGINE
+// 4. ASYNCHRONOUS NON-BLOCKING IMAGE ENGINE
 // ==========================================
 function processImageFile(file, type) {
   if (!file || !file.type.startsWith("image/")) return;
@@ -288,7 +288,7 @@ function restoreCanvasState() {
 }
 
 // ==========================================
-// 5. FALSE COLOR OVERLAY
+// 5. INSTANT CSS-BASED FALSE COLOR TOGGLE (0ms LATENCY)
 // ==========================================
 function generateFalseColorOverlay(width, height) {
   const fcCanvas = document.getElementById("falseColorCanvas");
@@ -305,13 +305,13 @@ function generateFalseColorOverlay(width, height) {
     const r = raw[i], g = raw[i + 1], b = raw[i + 2];
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-    if (luma >= 250) {
+    if (luma >= 250) {          // Highlight clipping -> Red
       targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
-    } else if (luma >= 100 && luma <= 115) {
+    } else if (luma >= 100 && luma <= 115) { // Skin Highs -> Pink
       targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
-    } else if (luma >= 40 && luma <= 48) {
+    } else if (luma >= 40 && luma <= 48) {   // Midtones -> Green
       targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
-    } else if (luma <= 10) {
+    } else if (luma <= 10) {                 // Shadows Crushed -> Purple
       targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
     } else {
       targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
@@ -344,7 +344,7 @@ function toggleFalseColorMode() {
 }
 
 // ==========================================
-// 6. VECTORSCOPE DISPLAY
+// 6. FAST VECTORSCOPE DISPLAY
 // ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
@@ -393,7 +393,7 @@ function drawVectorscope(imageData) {
 }
 
 // ==========================================
-// 7. SOFTWARE-ADAPTIVE GUIDANCE ENGINE
+// 7. SOFTWARE-ADAPTIVE 3-WAY GUIDANCE ENGINE
 // ==========================================
 function runAppOnScreenGuidance() {
   const feedback = document.getElementById("critiqueFeedback");
@@ -422,8 +422,37 @@ function runAppOnScreenGuidance() {
   };
   const sw = swNames[selectedSoftware] || swNames.davinci;
 
-  // Overexposure Check
-  if (pAvgLuma > 110) {
+  // 1. UNDEREXPOSED CHECK (pAvgLuma < 45)
+  if (pAvgLuma < 45) {
+    if (badge) {
+      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-800";
+      badge.innerText = "Underexposed / Too Dark";
+    }
+
+    cards.push(`
+      <div class="bg-red-950/40 border border-red-500/40 p-3 rounded-lg space-y-1.5">
+        <p class="font-bold text-red-300 text-xs flex items-center gap-1.5">
+          <span>🌑</span> CRITICAL RECOVERY: SHOT IS TOO DARK (In ${sw.layer})
+        </p>
+        <p class="text-red-200/90 text-xs leading-relaxed">
+          Details in your landscape and buildings are buried in deep shadows. Perform these 3 recovery moves first:
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+          <div class="bg-black/40 p-2 rounded border border-red-500/20 text-[11px]">
+            <strong class="text-red-400 block">1. Exposure / Offset:</strong> Boost (+0.80 to +1.50) to bring back details.
+          </div>
+          <div class="bg-black/40 p-2 rounded border border-red-500/20 text-[11px]">
+            <strong class="text-red-400 block">2. Shadows / Gamma:</strong> Lift midtones so dark areas become visible.
+          </div>
+          <div class="bg-black/40 p-2 rounded border border-red-500/20 text-[11px]">
+            <strong class="text-red-400 block">3. Contrast:</strong> Ease off contrast slightly so shadows aren't crushed.
+          </div>
+        </div>
+      </div>
+    `);
+  } 
+  // 2. OVEREXPOSURE CHECK (pAvgLuma > 110)
+  else if (pAvgLuma > 110) {
     if (badge) {
       badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800";
       badge.innerText = "Overexposed & Flushed Details";
@@ -447,7 +476,9 @@ function runAppOnScreenGuidance() {
         </div>
       </div>
     `);
-  } else {
+  } 
+  // 3. PROPERLY BALANCED (45 <= pAvgLuma <= 110)
+  else {
     if (badge) {
       badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-green-950 text-green-400 border border-green-800";
       badge.innerText = "Exposure Well Balanced";
@@ -482,9 +513,9 @@ function runAppOnScreenGuidance() {
   if (lumaDiff < -15) {
     exposureStepText = `Target <strong>${targetMoodName}</strong> is moodier. Reduce Exposure (-0.40) and lower shadows.`;
   } else if (lumaDiff > 15) {
-    exposureStepText = `Target is brighter. Lift midtones slightly (+0.30).`;
+    exposureStepText = `Target is brighter. Lift Exposure/Midtones (+0.80 to +1.20).`;
   } else {
-    exposureStepText = `Exposure matches target <strong>${targetMoodName}</strong> perfectly.`;
+    exposureStepText = `Exposure matches target <strong>${targetMoodName}</strong>.`;
   }
 
   let colorStepText = "";
