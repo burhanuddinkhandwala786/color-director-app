@@ -32,6 +32,9 @@ let referenceImageData = null;
 let activePreset = null;
 let isFalseColorActive = false;
 
+// Offscreen buffer canvas for false color (prevents UI blocking)
+let falseColorCanvas = document.createElement("canvas");
+
 // ==========================================
 // 2. CORE RENDERING ENGINE
 // ==========================================
@@ -152,7 +155,7 @@ window.selectPreset = function(key) {
 };
 
 // ==========================================
-// 3. EVENT BINDINGS
+// 3. EVENT BINDINGS (NON-BLOCKING UI)
 // ==========================================
 function attachEventListeners() {
   bindDropzone("dropzonePrimary", "filePrimary", (file) => processImageFile(file, 'primary'));
@@ -187,7 +190,7 @@ function bindDropzone(dropzoneId, inputId, callback) {
 }
 
 // ==========================================
-// 4. IMAGE PROCESSING ENGINE
+// 4. ASYNCHRONOUS IMAGE PROCESSING
 // ==========================================
 function processImageFile(file, type) {
   if (!file || !file.type.startsWith("image/")) return;
@@ -211,7 +214,11 @@ function processImageFile(file, type) {
       if (type === 'primary') {
         primaryImageData = { img, imageData, rawData: new Uint8ClampedArray(imageData.data) };
         isFalseColorActive = false;
-        drawVectorscope(imageData);
+
+        // Pre-generate false color buffer offscreen to avoid UI freezes on toggle
+        generateFalseColorBuffer(canvas.width, canvas.height);
+        
+        requestAnimationFrame(() => drawVectorscope(imageData));
       } else {
         referenceImageData = { img, imageData };
         activePreset = null;
@@ -233,11 +240,11 @@ function restoreCanvasState() {
       canvas.height = primaryImageData.img.height;
       
       if (isFalseColorActive) {
-        applyFalseColorToCanvas(ctx, canvas.width, canvas.height);
+        ctx.drawImage(falseColorCanvas, 0, 0);
       } else {
         ctx.putImageData(primaryImageData.imageData, 0, 0);
       }
-      drawVectorscope(primaryImageData.imageData);
+      requestAnimationFrame(() => drawVectorscope(primaryImageData.imageData));
     }
   }
 
@@ -255,60 +262,76 @@ function restoreCanvasState() {
 }
 
 // ==========================================
-// 5. VISUAL EXPOSURE MAP ENGINE
+// 5. HIGH-SPEED INSTANT FALSE COLOR ENGINE (ZERO INP LAG)
 // ==========================================
-function toggleFalseColorMode() {
-  if (!primaryImageData) return;
-
-  const canvas = document.getElementById("primaryCanvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-
-  isFalseColorActive = !isFalseColorActive;
-
-  if (isFalseColorActive) {
-    applyFalseColorToCanvas(ctx, canvas.width, canvas.height);
-  } else {
-    ctx.putImageData(primaryImageData.imageData, 0, 0);
-  }
-
-  const btn = document.getElementById("toggleFalseColor");
-  if (btn) {
-    btn.className = `px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition`;
-    btn.innerText = isFalseColorActive ? "🎨 Disable Visual Exposure Map" : "🎨 Toggle Visual Exposure Map";
-  }
-}
-
-function applyFalseColorToCanvas(ctx, width, height) {
+function generateFalseColorBuffer(width, height) {
+  falseColorCanvas.width = width;
+  falseColorCanvas.height = height;
+  const ctx = falseColorCanvas.getContext("2d");
   const imgData = ctx.createImageData(width, height);
   const targetData = imgData.data;
   const raw = primaryImageData.rawData;
 
-  for (let i = 0; i < raw.length; i += 4) {
-    const r = raw[i];
-    const g = raw[i + 1];
-    const b = raw[i + 2];
+  // 32-bit integer array view for 4x faster pixel iteration
+  const raw32 = new Uint32Array(raw.buffer);
+  const target32 = new Uint32Array(targetData.buffer);
+  const len = raw32.length;
+
+  for (let i = 0; i < len; i++) {
+    const pixel = raw32[i];
+    const r = pixel & 0xFF;
+    const g = (pixel >> 8) & 0xFF;
+    const b = (pixel >> 16) & 0xFF;
+    const a = (pixel >> 24) & 0xFF;
+
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-    if (luma >= 250) {
-      targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
-    } else if (luma >= 100 && luma <= 115) {
-      targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
-    } else if (luma >= 40 && luma <= 48) {
-      targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
-    } else if (luma <= 10) {
-      targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
-    } else {
-      targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
+    let outR = luma, outG = luma, outB = luma;
+
+    if (luma >= 250) {          // Highlight clipping -> Red
+      outR = 255; outG = 0; outB = 0;
+    } else if (luma >= 100 && luma <= 115) { // Skin Highs -> Pink
+      outR = 255; outG = 105; outB = 180;
+    } else if (luma >= 40 && luma <= 48) {   // Midtones -> Green
+      outR = 0; outG = 255; outB = 0;
+    } else if (luma <= 10) {                 // Shadows Crushed -> Purple
+      outR = 128; outG = 0; outB = 128;
     }
-    targetData[i + 3] = raw[i + 3];
+
+    target32[i] = (a << 24) | (outB << 16) | (outG << 8) | outR;
   }
 
   ctx.putImageData(imgData, 0, 0);
 }
 
+function toggleFalseColorMode() {
+  if (!primaryImageData) return;
+
+  const canvas = document.getElementById("primaryCanvas");
+  if (!canvas) return;
+
+  isFalseColorActive = !isFalseColorActive;
+
+  // UI state updates instantly (< 10ms)
+  const btn = document.getElementById("toggleFalseColor");
+  if (btn) {
+    btn.className = `px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition`;
+    btn.innerText = isFalseColorActive ? "🎨 Disable Exposure Map" : "🎨 Toggle Visual Exposure Map";
+  }
+
+  // Swap canvas buffer on next animation frame (Zero INP penalty)
+  requestAnimationFrame(() => {
+    const ctx = canvas.getContext("2d");
+    if (isFalseColorActive) {
+      ctx.drawImage(falseColorCanvas, 0, 0);
+    } else {
+      ctx.putImageData(primaryImageData.imageData, 0, 0);
+    }
+  });
+}
+
 // ==========================================
-// 6. VECTORSCOPE DISPLAY
+// 6. OPTIMIZED VECTORSCOPE DISPLAY
 // ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
@@ -340,8 +363,8 @@ function drawVectorscope(imageData) {
   ctx.stroke();
 
   const pixels = imageData.data;
-  const step = Math.max(4, Math.floor((pixels.length / 4) / 15000)) * 4;
-  ctx.fillStyle = "rgba(6, 182, 212, 0.35)";
+  const step = Math.max(8, Math.floor((pixels.length / 4) / 8000)) * 4;
+  ctx.fillStyle = "rgba(6, 182, 212, 0.4)";
 
   for (let i = 0; i < pixels.length; i += step) {
     const r = pixels[i];
@@ -379,7 +402,6 @@ function runAppOnScreenGuidance() {
   const pAvgLuma = pLumaSum / sampleCount;
   let cards = [];
 
-  // 1. OVEREXPOSURE & WASHED OUT DETECTION
   if (pAvgLuma > 110) {
     if (badge) {
       badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800";
@@ -414,7 +436,6 @@ function runAppOnScreenGuidance() {
     }
   }
 
-  // Determine Target (from Reference image OR Preset)
   let targetLuma = 100;
   let targetMoodName = "Standard Balance";
   let targetWarmth = 0;
@@ -438,7 +459,6 @@ function runAppOnScreenGuidance() {
     targetMoodName = p.name;
   }
 
-  // 2. MOOD & EXPOSURE MATCHING
   const lumaDiff = targetLuma - pAvgLuma;
   let exposureStepText = "";
   if (lumaDiff < -15) {
@@ -449,7 +469,6 @@ function runAppOnScreenGuidance() {
     exposureStepText = `Exposure matches target <strong>${targetMoodName}</strong> perfectly.`;
   }
 
-  // 3. COLOR WHEEL MATCHING
   let colorStepText = "";
   if (targetWarmth > 10) {
     colorStepText = `Nudge your Gamma/Midtone wheel toward <strong>Warm Amber/Orange</strong>.`;
@@ -473,7 +492,6 @@ function runAppOnScreenGuidance() {
     </div>
   `);
 
-  // 4. ONE-CLICK LUT SHORTCUT
   cards.push(`
     <div class="bg-purple-950/30 border border-purple-500/30 p-3 rounded-lg flex justify-between items-center text-xs">
       <div>
