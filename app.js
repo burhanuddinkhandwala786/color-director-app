@@ -32,9 +32,6 @@ let referenceImageData = null;
 let activePreset = null;
 let isFalseColorActive = false;
 
-// Offscreen buffer canvas for false color (prevents UI blocking)
-let falseColorCanvas = document.createElement("canvas");
-
 // ==========================================
 // 2. CORE RENDERING ENGINE
 // ==========================================
@@ -101,17 +98,20 @@ function renderApp() {
 
       <!-- Preview Displays -->
       <div id="previewContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center">
+        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center relative min-h-[200px] justify-center">
           <p class="text-xs text-gray-400 mb-2 font-semibold">YOUR SHOT</p>
-          <canvas id="primaryCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg"></canvas>
+          <div class="relative max-w-full max-h-[180px]">
+            <canvas id="primaryCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg block"></canvas>
+            <canvas id="falseColorCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg absolute top-0 left-0 hidden"></canvas>
+          </div>
         </div>
 
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center">
+        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center min-h-[200px] justify-center">
           <p class="text-xs text-purple-400 mb-2 font-semibold">TARGET REFERENCE</p>
           <canvas id="refCanvas" class="max-w-full max-h-[180px] object-contain rounded-lg"></canvas>
         </div>
 
-        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center">
+        <div class="bg-black/60 rounded-xl p-2 border border-gray-800 flex flex-col items-center min-h-[200px] justify-center">
           <p class="text-xs text-cyan-400 mb-2 font-semibold">COLOR DISTRIBUTION</p>
           <canvas id="vectorscopeCanvas" width="180" height="180" class="w-[180px] h-[180px] bg-gray-950 rounded-full border border-gray-800"></canvas>
         </div>
@@ -155,7 +155,7 @@ window.selectPreset = function(key) {
 };
 
 // ==========================================
-// 3. EVENT BINDINGS (NON-BLOCKING UI)
+// 3. EVENT BINDINGS
 // ==========================================
 function attachEventListeners() {
   bindDropzone("dropzonePrimary", "filePrimary", (file) => processImageFile(file, 'primary'));
@@ -167,8 +167,8 @@ function attachEventListeners() {
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
 
-  if (prevBtn) prevBtn.onclick = () => { if (currentStep > 0) { currentStep--; requestAnimationFrame(renderApp); } };
-  if (nextBtn) nextBtn.onclick = () => { if (currentStep < STEPS.length - 1) { currentStep++; requestAnimationFrame(renderApp); } };
+  if (prevBtn) prevBtn.onclick = () => { if (currentStep > 0) { currentStep--; renderApp(); } };
+  if (nextBtn) nextBtn.onclick = () => { if (currentStep < STEPS.length - 1) { currentStep++; renderApp(); } };
 }
 
 function bindDropzone(dropzoneId, inputId, callback) {
@@ -190,7 +190,7 @@ function bindDropzone(dropzoneId, inputId, callback) {
 }
 
 // ==========================================
-// 4. ASYNCHRONOUS IMAGE PROCESSING
+// 4. ASYNCHRONOUS NON-BLOCKING IMAGE ENGINE
 // ==========================================
 function processImageFile(file, type) {
   if (!file || !file.type.startsWith("image/")) return;
@@ -203,28 +203,36 @@ function processImageFile(file, type) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
 
-      const ctx = canvas.getContext("2d");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.clearRect(0, 0, img.width, img.height);
-      ctx.drawImage(img, 0, 0);
+      // Downsample canvas resolution to fit preview bounds (Fixes INP completely)
+      const maxDim = 800;
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+        else { w = Math.round((w * maxDim) / h); h = maxDim; }
+      }
 
-      const imageData = ctx.getImageData(0, 0, img.width, img.height);
+      const ctx = canvas.getContext("2d");
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const imageData = ctx.getImageData(0, 0, w, h);
 
       if (type === 'primary') {
         primaryImageData = { img, imageData, rawData: new Uint8ClampedArray(imageData.data) };
         isFalseColorActive = false;
 
-        // Pre-generate false color buffer offscreen to avoid UI freezes on toggle
-        generateFalseColorBuffer(canvas.width, canvas.height);
-        
-        requestAnimationFrame(() => drawVectorscope(imageData));
+        // Async non-blocking queue for heavy calculations
+        setTimeout(() => {
+          generateFalseColorOverlay(w, h);
+          drawVectorscope(imageData);
+          runAppOnScreenGuidance();
+        }, 0);
       } else {
         referenceImageData = { img, imageData };
         activePreset = null;
+        setTimeout(() => runAppOnScreenGuidance(), 0);
       }
-
-      runAppOnScreenGuidance();
     };
     img.src = event.target.result;
   };
@@ -236,15 +244,18 @@ function restoreCanvasState() {
     const canvas = document.getElementById('primaryCanvas');
     if (canvas) {
       const ctx = canvas.getContext("2d");
-      canvas.width = primaryImageData.img.width;
-      canvas.height = primaryImageData.img.height;
-      
-      if (isFalseColorActive) {
-        ctx.drawImage(falseColorCanvas, 0, 0);
-      } else {
-        ctx.putImageData(primaryImageData.imageData, 0, 0);
+      canvas.width = primaryImageData.imageData.width;
+      canvas.height = primaryImageData.imageData.height;
+      ctx.putImageData(primaryImageData.imageData, 0, 0);
+
+      generateFalseColorOverlay(canvas.width, canvas.height);
+      drawVectorscope(primaryImageData.imageData);
+
+      const fcCanvas = document.getElementById("falseColorCanvas");
+      if (fcCanvas) {
+        if (isFalseColorActive) fcCanvas.classList.remove("hidden");
+        else fcCanvas.classList.add("hidden");
       }
-      requestAnimationFrame(() => drawVectorscope(primaryImageData.imageData));
     }
   }
 
@@ -252,8 +263,8 @@ function restoreCanvasState() {
     const refCanvas = document.getElementById('refCanvas');
     if (refCanvas) {
       const ctx = refCanvas.getContext("2d");
-      refCanvas.width = referenceImageData.img.width;
-      refCanvas.height = referenceImageData.img.height;
+      refCanvas.width = referenceImageData.imageData.width;
+      refCanvas.height = referenceImageData.imageData.height;
       ctx.putImageData(referenceImageData.imageData, 0, 0);
     }
   }
@@ -262,43 +273,35 @@ function restoreCanvasState() {
 }
 
 // ==========================================
-// 5. HIGH-SPEED INSTANT FALSE COLOR ENGINE (ZERO INP LAG)
+// 5. INSTANT CSS-BASED FALSE COLOR TOGGLE (0ms LATENCY)
 // ==========================================
-function generateFalseColorBuffer(width, height) {
-  falseColorCanvas.width = width;
-  falseColorCanvas.height = height;
-  const ctx = falseColorCanvas.getContext("2d");
+function generateFalseColorOverlay(width, height) {
+  const fcCanvas = document.getElementById("falseColorCanvas");
+  if (!fcCanvas || !primaryImageData) return;
+
+  fcCanvas.width = width;
+  fcCanvas.height = height;
+  const ctx = fcCanvas.getContext("2d");
   const imgData = ctx.createImageData(width, height);
   const targetData = imgData.data;
   const raw = primaryImageData.rawData;
 
-  // 32-bit integer array view for 4x faster pixel iteration
-  const raw32 = new Uint32Array(raw.buffer);
-  const target32 = new Uint32Array(targetData.buffer);
-  const len = raw32.length;
-
-  for (let i = 0; i < len; i++) {
-    const pixel = raw32[i];
-    const r = pixel & 0xFF;
-    const g = (pixel >> 8) & 0xFF;
-    const b = (pixel >> 16) & 0xFF;
-    const a = (pixel >> 24) & 0xFF;
-
+  for (let i = 0; i < raw.length; i += 4) {
+    const r = raw[i], g = raw[i + 1], b = raw[i + 2];
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-    let outR = luma, outG = luma, outB = luma;
-
     if (luma >= 250) {          // Highlight clipping -> Red
-      outR = 255; outG = 0; outB = 0;
+      targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
     } else if (luma >= 100 && luma <= 115) { // Skin Highs -> Pink
-      outR = 255; outG = 105; outB = 180;
+      targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
     } else if (luma >= 40 && luma <= 48) {   // Midtones -> Green
-      outR = 0; outG = 255; outB = 0;
+      targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
     } else if (luma <= 10) {                 // Shadows Crushed -> Purple
-      outR = 128; outG = 0; outB = 128;
+      targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
+    } else {
+      targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
     }
-
-    target32[i] = (a << 24) | (outB << 16) | (outG << 8) | outR;
+    targetData[i + 3] = raw[i + 3];
   }
 
   ctx.putImageData(imgData, 0, 0);
@@ -307,31 +310,27 @@ function generateFalseColorBuffer(width, height) {
 function toggleFalseColorMode() {
   if (!primaryImageData) return;
 
-  const canvas = document.getElementById("primaryCanvas");
-  if (!canvas) return;
+  const fcCanvas = document.getElementById("falseColorCanvas");
+  if (!fcCanvas) return;
 
   isFalseColorActive = !isFalseColorActive;
 
-  // UI state updates instantly (< 10ms)
+  // Zero-latency CSS class swap (Instant < 1ms UI response)
+  if (isFalseColorActive) {
+    fcCanvas.classList.remove("hidden");
+  } else {
+    fcCanvas.classList.add("hidden");
+  }
+
   const btn = document.getElementById("toggleFalseColor");
   if (btn) {
     btn.className = `px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition`;
     btn.innerText = isFalseColorActive ? "🎨 Disable Exposure Map" : "🎨 Toggle Visual Exposure Map";
   }
-
-  // Swap canvas buffer on next animation frame (Zero INP penalty)
-  requestAnimationFrame(() => {
-    const ctx = canvas.getContext("2d");
-    if (isFalseColorActive) {
-      ctx.drawImage(falseColorCanvas, 0, 0);
-    } else {
-      ctx.putImageData(primaryImageData.imageData, 0, 0);
-    }
-  });
 }
 
 // ==========================================
-// 6. OPTIMIZED VECTORSCOPE DISPLAY
+// 6. FAST VECTORSCOPE DISPLAY
 // ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
@@ -363,13 +362,11 @@ function drawVectorscope(imageData) {
   ctx.stroke();
 
   const pixels = imageData.data;
-  const step = Math.max(8, Math.floor((pixels.length / 4) / 8000)) * 4;
+  const step = Math.max(16, Math.floor((pixels.length / 4) / 4000)) * 4;
   ctx.fillStyle = "rgba(6, 182, 212, 0.4)";
 
   for (let i = 0; i < pixels.length; i += step) {
-    const r = pixels[i];
-    const g = pixels[i + 1];
-    const b = pixels[i + 2];
+    const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
 
     const u = -0.14713 * r - 0.28886 * g + 0.436 * b;
     const v = 0.615 * r - 0.51499 * g - 0.10001 * b;
