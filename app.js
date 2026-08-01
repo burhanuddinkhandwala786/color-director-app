@@ -393,7 +393,7 @@ function drawVectorscope(imageData) {
 }
 
 // ==========================================
-// 7. SOFTWARE-ADAPTIVE 3-WAY GUIDANCE ENGINE
+// 7. STEP-AWARE & MULTI-CHANNEL GUIDANCE ENGINE
 // ==========================================
 function runAppOnScreenGuidance() {
   const feedback = document.getElementById("critiqueFeedback");
@@ -401,105 +401,69 @@ function runAppOnScreenGuidance() {
   if (!feedback || !primaryImageData) return;
 
   const pData = primaryImageData.rawData;
-  let pLumaSum = 0, rSum = 0, gSum = 0, bSum = 0;
+  let pLumaSum = 0, pRedSum = 0, pGreenSum = 0, pBlueSum = 0;
   const sampleStep = 16;
   const sampleCount = pData.length / sampleStep;
 
   for (let i = 0; i < pData.length; i += sampleStep) {
-    rSum += pData[i]; gSum += pData[i + 1]; bSum += pData[i + 2];
+    pRedSum += pData[i]; 
+    pGreenSum += pData[i + 1]; 
+    pBlueSum += pData[i + 2];
     pLumaSum += (0.2126 * pData[i] + 0.7152 * pData[i + 1] + 0.0722 * pData[i + 2]);
   }
 
   const pAvgLuma = pLumaSum / sampleCount;
+  const pAvgGreen = pGreenSum / sampleCount;
+  const pAvgRed = pRedSum / sampleCount;
+  const pAvgBlue = pBlueSum / sampleCount;
+
   let cards = [];
 
   // Software Vocabulary Dictionary
   const swNames = {
-    davinci: { layer: "Node 1", midtone: "Gamma Wheel", shadow: "Lift Wheel", targetLayer: "Node 2 & 3" },
-    premiere: { layer: "Lumetri - Basic Correction", midtone: "Midtones Wheel", shadow: "Shadows Wheel", targetLayer: "Lumetri Color Panel" },
-    lightroom: { layer: "Basic Panel", midtone: "Midtones / Exposure", shadow: "Shadows Slider", targetLayer: "Color Grading Panel" },
-    capcut: { layer: "Adjust Tab", midtone: "Brightness / Highlights", shadow: "Shadows", targetLayer: "Filters / Adjustments" }
+    davinci: { layer: "Node 1", midtone: "Gamma Wheel", shadow: "Lift Wheel", targetLayer: "Node 2 & 3", hsl: "HSL Curves" },
+    premiere: { layer: "Lumetri - Basic Correction", midtone: "Midtones Wheel", shadow: "Shadows Wheel", targetLayer: "Lumetri Color Panel", hsl: "Color Mixer (HSL)" },
+    lightroom: { layer: "Basic Panel", midtone: "Midtones / Exposure", shadow: "Shadows Slider", targetLayer: "Color Grading Panel", hsl: "HSL / Color Mixer" },
+    capcut: { layer: "Adjust Tab", midtone: "Brightness / Highlights", shadow: "Shadows", targetLayer: "Filters / Adjustments", hsl: "HSL Sliders" }
   };
   const sw = swNames[selectedSoftware] || swNames.davinci;
 
-  // 1. UNDEREXPOSED CHECK (pAvgLuma < 45)
+  // 1. EXPOSURE BADGE LOGIC
   if (pAvgLuma < 45) {
     if (badge) {
       badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-800";
       badge.innerText = "Underexposed / Too Dark";
     }
-
-    cards.push(`
-      <div class="bg-red-950/40 border border-red-500/40 p-3 rounded-lg space-y-1.5">
-        <p class="font-bold text-red-300 text-xs flex items-center gap-1.5">
-          <span>🌑</span> CRITICAL RECOVERY: SHOT IS TOO DARK (In ${sw.layer})
-        </p>
-        <p class="text-red-200/90 text-xs leading-relaxed">
-          Details in your landscape and buildings are buried in deep shadows. Perform these 3 recovery moves first:
-        </p>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-          <div class="bg-black/40 p-2 rounded border border-red-500/20 text-[11px]">
-            <strong class="text-red-400 block">1. Exposure / Offset:</strong> Boost (+0.80 to +1.50) to bring back details.
-          </div>
-          <div class="bg-black/40 p-2 rounded border border-red-500/20 text-[11px]">
-            <strong class="text-red-400 block">2. Shadows / Gamma:</strong> Lift midtones so dark areas become visible.
-          </div>
-          <div class="bg-black/40 p-2 rounded border border-red-500/20 text-[11px]">
-            <strong class="text-red-400 block">3. Contrast:</strong> Ease off contrast slightly so shadows aren't crushed.
-          </div>
-        </div>
-      </div>
-    `);
-  } 
-  // 2. OVEREXPOSURE CHECK (pAvgLuma > 110)
-  else if (pAvgLuma > 110) {
+  } else if (pAvgLuma > 110) {
     if (badge) {
       badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800";
       badge.innerText = "Overexposed & Flushed Details";
     }
-
-    cards.push(`
-      <div class="bg-amber-950/40 border border-amber-500/40 p-3 rounded-lg space-y-1.5">
-        <p class="font-bold text-amber-300 text-xs flex items-center gap-1.5">
-          <span>⚠️</span> RECOVERY STEP (In ${sw.layer}):
-        </p>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-          <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
-            <strong class="text-amber-400 block">1. Highlights:</strong> Pull down to -70 to reveal flushed details.
-          </div>
-          <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
-            <strong class="text-amber-400 block">2. Shadows:</strong> Lower down until blacks look rich.
-          </div>
-          <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
-            <strong class="text-amber-400 block">3. Saturation:</strong> Turn up to +20 to restore dead colors.
-          </div>
-        </div>
-      </div>
-    `);
-  } 
-  // 3. PROPERLY BALANCED (45 <= pAvgLuma <= 110)
-  else {
+  } else {
     if (badge) {
       badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-green-950 text-green-400 border border-green-800";
-      badge.innerText = "Exposure Well Balanced";
+      badge.innerText = "Exposure Balanced";
     }
   }
 
-  let targetLuma = 100;
+  // Calculate Reference Data or Preset
+  let targetLuma = 100, targetWarmth = 0, targetGreen = 0;
   let targetMoodName = "Standard Balance";
-  let targetWarmth = 0;
 
   if (referenceImageData) {
     const rData = referenceImageData.imageData.data;
-    let rLumaSum = 0, rRedSum = 0, rBlueSum = 0;
+    let rLumaSum = 0, rRedSum = 0, rGreenSum = 0, rBlueSum = 0;
     const rSampleCount = rData.length / sampleStep;
 
     for (let i = 0; i < rData.length; i += sampleStep) {
-      rRedSum += rData[i]; rBlueSum += rData[i + 2];
+      rRedSum += rData[i]; 
+      rGreenSum += rData[i + 1]; 
+      rBlueSum += rData[i + 2];
       rLumaSum += (0.2126 * rData[i] + 0.7152 * rData[i + 1] + 0.0722 * rData[i + 2]);
     }
     targetLuma = rLumaSum / rSampleCount;
     targetWarmth = (rRedSum - rBlueSum) / rSampleCount;
+    targetGreen = (rGreenSum - ((rRedSum + rBlueSum) / 2)) / rSampleCount;
     targetMoodName = "Target Reference Frame";
   } else if (activePreset && MOOD_PRESETS[activePreset]) {
     const p = MOOD_PRESETS[activePreset];
@@ -508,51 +472,81 @@ function runAppOnScreenGuidance() {
     targetMoodName = p.name;
   }
 
-  const lumaDiff = targetLuma - pAvgLuma;
-  let exposureStepText = "";
-  if (lumaDiff < -15) {
-    exposureStepText = `Target <strong>${targetMoodName}</strong> is moodier. Reduce Exposure (-0.40) and lower shadows.`;
-  } else if (lumaDiff > 15) {
-    exposureStepText = `Target is brighter. Lift Exposure/Midtones (+0.80 to +1.20).`;
-  } else {
-    exposureStepText = `Exposure matches target <strong>${targetMoodName}</strong>.`;
+  // ==========================================
+  // STEP-SPECIFIC GUIDANCE SWITCH
+  // ==========================================
+
+  // STEP 1: EXPOSURE & CONTRAST FOCUS ONLY
+  if (currentStep === 0) {
+    if (pAvgLuma < 45) {
+      cards.push(`
+        <div class="bg-red-950/40 border border-red-500/40 p-3 rounded-lg space-y-1.5">
+          <p class="font-bold text-red-300 text-xs">🌑 STEP 1 RECOVERY: SHOT IS TOO DARK (In ${sw.layer})</p>
+          <p class="text-red-200/90 text-xs">Boost Exposure/Offset (+0.80 to +1.20) and lift midtones to pull shadows out of total black.</p>
+        </div>
+      `);
+    } else if (pAvgLuma > 110) {
+      cards.push(`
+        <div class="bg-amber-950/40 border border-amber-500/40 p-3 rounded-lg space-y-1.5">
+          <p class="font-bold text-amber-300 text-xs">⚠️ STEP 1 RECOVERY: SHOT IS OVEREXPOSED (In ${sw.layer})</p>
+          <p class="text-amber-200/90 text-xs">Pull Highlights down (-70) and drop shadows/lift to rebuild washed-out contrast.</p>
+        </div>
+      `);
+    } else {
+      const lumaDiff = targetLuma - pAvgLuma;
+      let expText = lumaDiff < -15 
+        ? `Reference is darker and moodier. Lower your exposure (-0.40) and pull down shadows.`
+        : lumaDiff > 15 
+        ? `Reference is brighter. Lift midtones/gamma (+0.30) to match.`
+        : `Luminance levels match your target reference shot.`;
+
+      cards.push(`
+        <div class="bg-gray-900 border border-gray-800 p-3 rounded-lg space-y-1 text-xs">
+          <p class="font-bold text-cyan-400">☀️ STEP 1: EXPOSURE & CONTRAST BALANCING (In ${sw.layer})</p>
+          <p class="text-gray-300">${expText}</p>
+        </div>
+      `);
+    }
   }
 
-  let colorStepText = "";
-  if (targetWarmth > 10) {
-    colorStepText = `Nudge your ${sw.midtone} toward <strong>Warm Amber/Orange</strong>.`;
-  } else if (targetWarmth < -10) {
-    colorStepText = `Push your ${sw.shadow} toward <strong>Cool Teal/Blue</strong>.`;
-  } else {
-    colorStepText = `Color temperature is balanced.`;
+  // STEP 2: HUE, SATURATION & FOLIAGE/SKIN CALIBRATION
+  else if (currentStep === 1) {
+    let colorGuides = [];
+
+    // Warmth vs Cool
+    if (targetWarmth > 10) {
+      colorGuides.push(`Nudge midtones (${sw.midtone}) toward <strong>Warm Amber/Gold</strong>.`);
+    } else if (targetWarmth < -10) {
+      colorGuides.push(`Push shadows (${sw.shadow}) toward <strong>Cool Teal/Cyan</strong>.`);
+    }
+
+    // Foliage & Greens Check
+    if (targetGreen > 12) {
+      colorGuides.push(`Reference has rich green foliage. In <strong>${sw.hsl}</strong>, boost Green Saturation (+25) and shift Green Hue toward rich forest green.`);
+    }
+
+    cards.push(`
+      <div class="bg-gray-900 border border-gray-800 p-3 rounded-lg space-y-2 text-xs">
+        <p class="font-bold text-cyan-400">🎨 STEP 2: COLOR HUE & SATURATION CALIBRATION (In ${sw.targetLayer})</p>
+        <ul class="list-disc pl-4 space-y-1 text-gray-300">
+          ${colorGuides.map(g => `<li>${g}</li>`).join("") || '<li>Color temperature and foliage tint are balanced against target.</li>'}
+        </ul>
+      </div>
+    `);
   }
 
-  cards.push(`
-    <div class="bg-gray-900/90 border border-gray-800 p-3 rounded-lg space-y-2">
-      <p class="font-bold text-cyan-400 text-xs">🎯 MOOD & COLOR MATCHING STEPS (In ${sw.targetLayer}):</p>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
-        <div class="bg-black/40 p-2 rounded border border-gray-800">
-          <strong class="text-cyan-300 block">Exposure Adjustment:</strong> ${exposureStepText}
-        </div>
-        <div class="bg-black/40 p-2 rounded border border-gray-800">
-          <strong class="text-cyan-300 block">Color Shifts:</strong> ${colorStepText}
-        </div>
+  // STEP 3: FINAL GRADE & LUT EXPORT
+  else if (currentStep === 2) {
+    cards.push(`
+      <div class="bg-purple-950/30 border border-purple-500/30 p-3 rounded-lg text-xs space-y-2">
+        <strong class="text-purple-300 block text-sm">🚀 STEP 3: FINAL GRADE EXPORT</strong>
+        <p class="text-purple-200/80">Click <strong>'Export 3D .CUBE LUT'</strong> above to generate your grade file. Import it directly into ${selectedSoftware} to apply the full color mapping instantly.</p>
       </div>
-    </div>
-  `);
-
-  cards.push(`
-    <div class="bg-purple-950/30 border border-purple-500/30 p-3 rounded-lg flex justify-between items-center text-xs">
-      <div>
-        <strong class="text-purple-300 block">🚀 1-Click Fast Track:</strong>
-        <span class="text-purple-200/80 text-[11px]">Click 'Export 3D .CUBE LUT' at the top and drop the downloaded file into your project.</span>
-      </div>
-    </div>
-  `);
+    `);
+  }
 
   feedback.innerHTML = cards.join("");
 }
-
 // ==========================================
 // 8. 3D .CUBE LUT EXPORT ENGINE
 // ==========================================
