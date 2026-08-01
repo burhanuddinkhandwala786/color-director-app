@@ -14,7 +14,7 @@ const STEPS = [
   },
   {
     title: "Step 3: Grade Finalization & LUT Export",
-    instruction: "Review the full recovery checklist or click 'Export 3D .CUBE LUT' for 1-click DaVinci application.",
+    instruction: "Review the full recovery checklist or click 'Export 3D .CUBE LUT' for 1-click application.",
     action: "Grade Export"
   }
 ];
@@ -31,6 +31,7 @@ let primaryImageData = null;
 let referenceImageData = null;
 let activePreset = null;
 let isFalseColorActive = false;
+let selectedSoftware = "davinci"; // Default software selection
 
 // ==========================================
 // 2. CORE RENDERING ENGINE
@@ -45,14 +46,22 @@ function renderApp() {
     <div class="bg-gray-900 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl space-y-6">
       
       <!-- Header -->
-      <div class="flex justify-between items-center border-b border-gray-800 pb-4">
+      <div class="flex flex-wrap justify-between items-center border-b border-gray-800 pb-4 gap-2">
         <div>
           <h1 class="text-xl font-bold text-cyan-400">${step.title}</h1>
           <p class="text-xs text-gray-400 mt-1">${step.instruction}</p>
         </div>
-        <span class="bg-cyan-950 text-cyan-300 text-xs px-3 py-1 rounded-full font-bold border border-cyan-800">
-          ${step.action}
-        </span>
+        
+        <!-- Software Selection Dropdown -->
+        <div class="flex items-center gap-2 bg-gray-950 p-1.5 rounded-lg border border-gray-800">
+          <label class="text-[11px] font-bold text-gray-400">Software:</label>
+          <select id="softwareSelect" class="bg-gray-900 text-cyan-300 text-xs font-semibold rounded px-2 py-1 border border-gray-700 outline-none">
+            <option value="davinci" ${selectedSoftware === 'davinci' ? 'selected' : ''}>DaVinci Resolve</option>
+            <option value="premiere" ${selectedSoftware === 'premiere' ? 'selected' : ''}>Adobe Premiere</option>
+            <option value="lightroom" ${selectedSoftware === 'lightroom' ? 'selected' : ''}>Lightroom / Camera Raw</option>
+            <option value="capcut" ${selectedSoftware === 'capcut' ? 'selected' : ''}>CapCut / Mobile</option>
+          </select>
+        </div>
       </div>
 
       <!-- Image Ingestion Dropzones -->
@@ -164,6 +173,14 @@ function attachEventListeners() {
   document.getElementById("toggleFalseColor").onclick = toggleFalseColorMode;
   document.getElementById("exportLUT").onclick = export3DLUT;
 
+  const swSelect = document.getElementById("softwareSelect");
+  if (swSelect) {
+    swSelect.onchange = (e) => {
+      selectedSoftware = e.target.value;
+      if (primaryImageData) runAppOnScreenGuidance();
+    };
+  }
+
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
 
@@ -190,7 +207,7 @@ function bindDropzone(dropzoneId, inputId, callback) {
 }
 
 // ==========================================
-// 4. ASYNCHRONOUS NON-BLOCKING IMAGE ENGINE
+// 4. ASYNCHRONOUS IMAGE ENGINE
 // ==========================================
 function processImageFile(file, type) {
   if (!file || !file.type.startsWith("image/")) return;
@@ -203,7 +220,6 @@ function processImageFile(file, type) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
 
-      // Downsample canvas resolution to fit preview bounds (Fixes INP completely)
       const maxDim = 800;
       let w = img.width, h = img.height;
       if (w > maxDim || h > maxDim) {
@@ -222,7 +238,6 @@ function processImageFile(file, type) {
         primaryImageData = { img, imageData, rawData: new Uint8ClampedArray(imageData.data) };
         isFalseColorActive = false;
 
-        // Async non-blocking queue for heavy calculations
         setTimeout(() => {
           generateFalseColorOverlay(w, h);
           drawVectorscope(imageData);
@@ -273,7 +288,7 @@ function restoreCanvasState() {
 }
 
 // ==========================================
-// 5. INSTANT CSS-BASED FALSE COLOR TOGGLE (0ms LATENCY)
+// 5. FALSE COLOR OVERLAY
 // ==========================================
 function generateFalseColorOverlay(width, height) {
   const fcCanvas = document.getElementById("falseColorCanvas");
@@ -290,13 +305,13 @@ function generateFalseColorOverlay(width, height) {
     const r = raw[i], g = raw[i + 1], b = raw[i + 2];
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-    if (luma >= 250) {          // Highlight clipping -> Red
+    if (luma >= 250) {
       targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
-    } else if (luma >= 100 && luma <= 115) { // Skin Highs -> Pink
+    } else if (luma >= 100 && luma <= 115) {
       targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
-    } else if (luma >= 40 && luma <= 48) {   // Midtones -> Green
+    } else if (luma >= 40 && luma <= 48) {
       targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
-    } else if (luma <= 10) {                 // Shadows Crushed -> Purple
+    } else if (luma <= 10) {
       targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
     } else {
       targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
@@ -315,7 +330,6 @@ function toggleFalseColorMode() {
 
   isFalseColorActive = !isFalseColorActive;
 
-  // Zero-latency CSS class swap (Instant < 1ms UI response)
   if (isFalseColorActive) {
     fcCanvas.classList.remove("hidden");
   } else {
@@ -330,7 +344,7 @@ function toggleFalseColorMode() {
 }
 
 // ==========================================
-// 6. FAST VECTORSCOPE DISPLAY
+// 6. VECTORSCOPE DISPLAY
 // ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
@@ -379,7 +393,7 @@ function drawVectorscope(imageData) {
 }
 
 // ==========================================
-// 7. DIRECT ON-SCREEN APP GUIDANCE ENGINE
+// 7. SOFTWARE-ADAPTIVE GUIDANCE ENGINE
 // ==========================================
 function runAppOnScreenGuidance() {
   const feedback = document.getElementById("critiqueFeedback");
@@ -399,6 +413,16 @@ function runAppOnScreenGuidance() {
   const pAvgLuma = pLumaSum / sampleCount;
   let cards = [];
 
+  // Software Vocabulary Dictionary
+  const swNames = {
+    davinci: { layer: "Node 1", midtone: "Gamma Wheel", shadow: "Lift Wheel", targetLayer: "Node 2 & 3" },
+    premiere: { layer: "Lumetri - Basic Correction", midtone: "Midtones Wheel", shadow: "Shadows Wheel", targetLayer: "Lumetri Color Panel" },
+    lightroom: { layer: "Basic Panel", midtone: "Midtones / Exposure", shadow: "Shadows Slider", targetLayer: "Color Grading Panel" },
+    capcut: { layer: "Adjust Tab", midtone: "Brightness / Highlights", shadow: "Shadows", targetLayer: "Filters / Adjustments" }
+  };
+  const sw = swNames[selectedSoftware] || swNames.davinci;
+
+  // Overexposure Check
   if (pAvgLuma > 110) {
     if (badge) {
       badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800";
@@ -408,20 +432,17 @@ function runAppOnScreenGuidance() {
     cards.push(`
       <div class="bg-amber-950/40 border border-amber-500/40 p-3 rounded-lg space-y-1.5">
         <p class="font-bold text-amber-300 text-xs flex items-center gap-1.5">
-          <span>⚠️</span> REQUIRED INITIAL RECOVERY (Before Applying Color/LUTs)
-        </p>
-        <p class="text-amber-200/90 text-xs leading-relaxed">
-          Your shot has severe highlight glare and lost color density. Perform these 3 slider moves in <strong>Node 1 (DaVinci)</strong> first:
+          <span>⚠️</span> RECOVERY STEP (In ${sw.layer}):
         </p>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
           <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
             <strong class="text-amber-400 block">1. Highlights:</strong> Pull down to -70 to reveal flushed details.
           </div>
           <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
-            <strong class="text-amber-400 block">2. Shadows / Lift:</strong> Lower down until blacks look rich.
+            <strong class="text-amber-400 block">2. Shadows:</strong> Lower down until blacks look rich.
           </div>
           <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
-            <strong class="text-amber-400 block">3. Color Boost:</strong> Turn up to +20 to restore dead colors.
+            <strong class="text-amber-400 block">3. Saturation:</strong> Turn up to +20 to restore dead colors.
           </div>
         </div>
       </div>
@@ -468,22 +489,22 @@ function runAppOnScreenGuidance() {
 
   let colorStepText = "";
   if (targetWarmth > 10) {
-    colorStepText = `Nudge your Gamma/Midtone wheel toward <strong>Warm Amber/Orange</strong>.`;
+    colorStepText = `Nudge your ${sw.midtone} toward <strong>Warm Amber/Orange</strong>.`;
   } else if (targetWarmth < -10) {
-    colorStepText = `Push your Lift/Shadow wheel toward <strong>Cool Teal/Blue</strong>.`;
+    colorStepText = `Push your ${sw.shadow} toward <strong>Cool Teal/Blue</strong>.`;
   } else {
     colorStepText = `Color temperature is balanced.`;
   }
 
   cards.push(`
     <div class="bg-gray-900/90 border border-gray-800 p-3 rounded-lg space-y-2">
-      <p class="font-bold text-cyan-400 text-xs">🎯 MOOD & COLOR MATCHING STEPS (Node 2 & 3 in DaVinci):</p>
+      <p class="font-bold text-cyan-400 text-xs">🎯 MOOD & COLOR MATCHING STEPS (In ${sw.targetLayer}):</p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
         <div class="bg-black/40 p-2 rounded border border-gray-800">
           <strong class="text-cyan-300 block">Exposure Adjustment:</strong> ${exposureStepText}
         </div>
         <div class="bg-black/40 p-2 rounded border border-gray-800">
-          <strong class="text-cyan-300 block">Color Wheels Shift:</strong> ${colorStepText}
+          <strong class="text-cyan-300 block">Color Shifts:</strong> ${colorStepText}
         </div>
       </div>
     </div>
@@ -493,7 +514,7 @@ function runAppOnScreenGuidance() {
     <div class="bg-purple-950/30 border border-purple-500/30 p-3 rounded-lg flex justify-between items-center text-xs">
       <div>
         <strong class="text-purple-300 block">🚀 1-Click Fast Track:</strong>
-        <span class="text-purple-200/80 text-[11px]">Click 'Export 3D .CUBE LUT' at the top and drop the downloaded file onto Node 3.</span>
+        <span class="text-purple-200/80 text-[11px]">Click 'Export 3D .CUBE LUT' at the top and drop the downloaded file into your project.</span>
       </div>
     </div>
   `);
