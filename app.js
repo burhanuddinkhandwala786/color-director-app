@@ -3,23 +3,22 @@
 // ==========================================
 const STEPS = [
   {
-    title: "1. Exposure & Shadow Check",
-    instruction: "Upload your shot. Toggle False Color to see if your shot is too bright, too dark, or balanced.",
+    title: "1. Exposure & Detail Recovery",
+    instruction: "Upload your shot. If details are flushed/washed out, follow the initial recovery steps first.",
     action: "Exposure Assessment"
   },
   {
-    title: "2. Color Mood & Skin Tone Matching",
-    instruction: "Choose a target Mood Preset below OR upload a reference image to get exact slider recommendations.",
+    title: "2. Color Mood & Skin Tone Calibration",
+    instruction: "Choose a target Mood Preset OR upload a reference image to get exact color guidance.",
     action: "Mood Calibration"
   },
   {
     title: "3. Export Grade for DaVinci / Premiere / Lightroom",
-    instruction: "Follow the plain-English slider steps or click 'Export 3D .CUBE LUT' to apply the grade in one click.",
+    instruction: "Follow the plain-English slider steps or click 'Export 3D .CUBE LUT' to apply the grade.",
     action: "Grade Export"
   }
 ];
 
-// Presets for creators without a reference photo
 const MOOD_PRESETS = {
   cinematic: { name: "🎬 Moody Cinematic", lumaTarget: 80, warmBias: -10, description: "Lowered exposure, deep shadows, cool/teal midtones." },
   golden: { name: "🌅 Golden Hour", lumaTarget: 110, warmBias: 25, description: "Warm golden highlights, soft contrast, glowing skin." },
@@ -71,9 +70,9 @@ function renderApp() {
         </div>
       </div>
 
-      <!-- Creator Presets (If no reference image is available) -->
+      <!-- Creator Presets -->
       <div class="bg-gray-950/60 p-3 rounded-xl border border-gray-800 space-y-2">
-        <p class="text-xs font-bold text-gray-400">OR SELECT A DREAM MOOD PRESET:</p>
+        <p class="text-xs font-bold text-gray-400">OR SELECT A MOOD PRESET:</p>
         <div class="flex flex-wrap gap-2">
           ${Object.keys(MOOD_PRESETS).map(key => `
             <button 
@@ -89,7 +88,7 @@ function renderApp() {
       <!-- Toolbar Controls -->
       <div id="toolbar" class="flex flex-wrap gap-2 items-center justify-between border-t border-b border-gray-800 py-3">
         <button id="toggleFalseColor" class="px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition">
-          🎨 ${isFalseColorActive ? 'Disable False Color' : 'Toggle Visual Exposure Map'}
+          🎨 ${isFalseColorActive ? 'Disable Visual Exposure Map' : 'Toggle Visual Exposure Map'}
         </button>
 
         <button id="exportLUT" class="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-semibold border border-purple-500/30 transition">
@@ -118,10 +117,10 @@ function renderApp() {
       <!-- Real-World Creator Assistant Box -->
       <div id="critiqueBox" class="bg-gray-950 border border-cyan-500/30 p-4 rounded-xl text-xs space-y-3">
         <p class="font-bold text-cyan-400 text-sm flex items-center gap-1.5">
-          <span>🪄</span> Plain-English Creator Action Plan:
+          <span>👑</span> GOAT Workflow Directives:
         </p>
         <div id="critiqueFeedback" class="text-gray-300 space-y-2 leading-relaxed">
-          Upload a shot above to get exact slider recommendations for DaVinci, Lightroom, or Premiere.
+          Upload a shot above to detect exposure issues and get step-by-step recovery steps.
         </div>
       </div>
 
@@ -141,7 +140,6 @@ function renderApp() {
   restoreCanvasState();
 }
 
-// Global scope window assignment for preset selector button
 window.selectPreset = function(key) {
   activePreset = key;
   renderApp();
@@ -210,7 +208,7 @@ function processImageFile(file, type) {
         drawVectorscope(imageData);
       } else {
         referenceImageData = { img, imageData };
-        activePreset = null; // Reference image overrides preset selection
+        activePreset = null;
       }
 
       runHumanAnalysis();
@@ -286,13 +284,13 @@ function applyFalseColorToCanvas(ctx, width, height) {
     const b = raw[i + 2];
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-    if (luma >= 250) { // Clipped Highlights -> Red
+    if (luma >= 250) {
       targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
-    } else if (luma >= 100 && luma <= 115) { // Skin Tone Highs -> Pink
+    } else if (luma >= 100 && luma <= 115) {
       targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
-    } else if (luma >= 40 && luma <= 48) { // Midtones -> Green
+    } else if (luma >= 40 && luma <= 48) {
       targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
-    } else if (luma <= 10) { // Shadow Detail Lost -> Purple
+    } else if (luma <= 10) {
       targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
     } else {
       targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
@@ -327,7 +325,6 @@ function drawVectorscope(imageData) {
   ctx.moveTo(5, center); ctx.lineTo(size - 5, center);
   ctx.stroke();
 
-  // 123° Skin Tone Line
   const skinAngle = (123 * Math.PI) / 180;
   ctx.strokeStyle = "#f59e0b"; 
   ctx.lineWidth = 2;
@@ -356,7 +353,7 @@ function drawVectorscope(imageData) {
 }
 
 // ==========================================
-// 7. REAL-WORLD HUMAN ANALYSIS ENGINE
+// 7. GOAT WORKFLOW ANALYSIS ENGINE
 // ==========================================
 function runHumanAnalysis() {
   const feedback = document.getElementById("critiqueFeedback");
@@ -374,6 +371,17 @@ function runHumanAnalysis() {
 
   const pAvgLuma = pLumaSum / sampleCount;
   let steps = [];
+
+  // OVEREXPOSURE & WASHED OUT DETECTION (Luma > 110)
+  if (pAvgLuma > 110) {
+    steps.push(`⚠️ <strong>CRITICAL RECOVERY NEEDED (Shot is Overexposed):</strong><br/>
+    Before applying any LUT or creative color, do these initial steps in Node 1 in DaVinci:
+    <ul class="list-disc pl-4 mt-1 space-y-1 text-gray-300">
+      <li><strong>Pull Highlights Down (-60 to -80):</strong> Brings back flushed details in bright areas.</li>
+      <li><strong>Crush Lift / Shadows Down:</strong> Lowers dark areas to true black to restore washed-out contrast.</li>
+      <li><strong>Boost Saturation (+15) & Color Boost (+20):</strong> Restores dead, pale skin/object colors safely.</li>
+    </ul>`);
+  }
 
   // Determine Target (from Reference image OR Preset)
   let targetLuma = 100;
@@ -399,27 +407,22 @@ function runHumanAnalysis() {
     targetMoodName = p.name;
   }
 
-  // 1. Exposure & Contrast Guidance
+  // Exposure Guidance for Grade
   const lumaDiff = targetLuma - pAvgLuma;
   if (lumaDiff < -15) {
-    steps.push(`☀️ <strong>Step 1 (Exposure):</strong> Your shot is too bright for the <em>${targetMoodName}</em> look. <strong>Turn EXPOSURE down</strong> (around -0.40 to -0.70) and lower <strong>SHADOWS</strong>.`);
+    steps.push(`☀️ <strong>Node 2 (Exposure Matching):</strong> Target <em>${targetMoodName}</em> is moodier. Turn EXPOSURE down (-0.40 to -0.70).`);
   } else if (lumaDiff > 15) {
-    steps.push(`🔆 <strong>Step 1 (Exposure):</strong> Your shot is too dark. <strong>Boost EXPOSURE</strong> slightly (+0.30 to +0.50) and lift midtones.`);
-  } else {
-    steps.push(`✅ <strong>Step 1 (Exposure):</strong> Brightness looks great! Keep overall exposure as-is.`);
+    steps.push(`🔆 <strong>Node 2 (Exposure Matching):</strong> Target is brighter. Lift midtones slightly.`);
   }
 
-  // 2. Color Balance Guidance
+  // Color Balance Guidance
   if (targetWarmth > 10) {
-    steps.push(`🔥 <strong>Step 2 (Color Mood):</strong> Move your <strong>TEMPERATURE slider toward Warm/Yellow (+10 to +15)</strong>. In DaVinci, nudge your Gamma/Midtone wheel toward Orange.`);
+    steps.push(`🔥 <strong>Node 3 (Color Look):</strong> Nudge midtone wheel toward <strong>Warm Amber/Orange</strong>.`);
   } else if (targetWarmth < -10) {
-    steps.push(`❄️ <strong>Step 2 (Color Mood):</strong> Move your <strong>TEMPERATURE slider toward Cool/Blue (-10 to -15)</strong>. Push your Lift/Shadow wheel toward Teal.`);
-  } else {
-    steps.push(`🎨 <strong>Step 2 (Color Mood):</strong> Color temperature is well-balanced.`);
+    steps.push(`❄️ <strong>Node 3 (Color Look):</strong> Push shadow wheel toward <strong>Teal/Cool Blue</strong>.`);
   }
 
-  // 3. Quick Action Summary
-  steps.push(`💡 <strong>Fast Track:</strong> Click <strong>"Export 3D .CUBE LUT"</strong> above and drag the downloaded file straight onto your node in DaVinci Resolve or Lightroom!`);
+  steps.push(`💡 <strong>Final Polish (Node 4):</strong> Export the LUT above, place it on Node 3, then add a subtle vignette to make your subject pop like a GOAT!`);
 
   feedback.innerHTML = steps.map(item => `<div class="bg-gray-900 p-2.5 rounded-lg border border-gray-800">${item}</div>`).join("");
 }
@@ -475,7 +478,6 @@ function export3DLUT() {
   URL.revokeObjectURL(url);
 }
 
-// Initial rendering initialization
 try {
   renderApp();
 } catch (err) {
