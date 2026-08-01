@@ -3,18 +3,18 @@
 // ==========================================
 const STEPS = [
   {
-    title: "1. Exposure & Detail Recovery",
-    instruction: "Upload your shot. If details are flushed/washed out, follow the initial recovery steps first.",
+    title: "Step 1: Exposure Assessment & Detail Recovery",
+    instruction: "Upload your shot. The app will inspect pixel luma data and tell you if overexposure recovery is required.",
     action: "Exposure Assessment"
   },
   {
-    title: "2. Color Mood & Skin Tone Calibration",
-    instruction: "Choose a target Mood Preset OR upload a reference image to get exact color guidance.",
-    action: "Mood Calibration"
+    title: "Step 2: Color Calibration & Mood Alignment",
+    instruction: "Align skin tones using the 360° Vectorscope or select a mood preset to match target hues.",
+    action: "Mood Alignment"
   },
   {
-    title: "3. Export Grade for DaVinci / Premiere / Lightroom",
-    instruction: "Follow the plain-English slider steps or click 'Export 3D .CUBE LUT' to apply the grade.",
+    title: "Step 3: Grade Finalization & LUT Export",
+    instruction: "Review the full recovery checklist or click 'Export 3D .CUBE LUT' for 1-click DaVinci application.",
     action: "Grade Export"
   }
 ];
@@ -45,12 +45,12 @@ function renderApp() {
     <div class="bg-gray-900 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl space-y-6">
       
       <!-- Header -->
-      <div class="flex justify-between items-center">
+      <div class="flex justify-between items-center border-b border-gray-800 pb-4">
         <div>
           <h1 class="text-xl font-bold text-cyan-400">${step.title}</h1>
-          <p class="text-xs text-gray-400 mt-0.5">${step.instruction}</p>
+          <p class="text-xs text-gray-400 mt-1">${step.instruction}</p>
         </div>
-        <span class="bg-cyan-950 text-cyan-300 text-xs px-3 py-1 rounded-full font-bold">
+        <span class="bg-cyan-950 text-cyan-300 text-xs px-3 py-1 rounded-full font-bold border border-cyan-800">
           ${step.action}
         </span>
       </div>
@@ -70,9 +70,9 @@ function renderApp() {
         </div>
       </div>
 
-      <!-- Creator Presets -->
+      <!-- Target Mood Presets -->
       <div class="bg-gray-950/60 p-3 rounded-xl border border-gray-800 space-y-2">
-        <p class="text-xs font-bold text-gray-400">OR SELECT A MOOD PRESET:</p>
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Target Mood Presets (Or use reference above):</p>
         <div class="flex flex-wrap gap-2">
           ${Object.keys(MOOD_PRESETS).map(key => `
             <button 
@@ -88,11 +88,11 @@ function renderApp() {
       <!-- Toolbar Controls -->
       <div id="toolbar" class="flex flex-wrap gap-2 items-center justify-between border-t border-b border-gray-800 py-3">
         <button id="toggleFalseColor" class="px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition">
-          🎨 ${isFalseColorActive ? 'Disable Visual Exposure Map' : 'Toggle Visual Exposure Map'}
+          🎨 ${isFalseColorActive ? 'Disable Exposure Map' : 'Toggle Visual Exposure Map'}
         </button>
 
         <button id="exportLUT" class="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-semibold border border-purple-500/30 transition">
-          💾 Export 3D .CUBE LUT (DaVinci/Premiere)
+          💾 Export 3D .CUBE LUT
         </button>
       </div>
 
@@ -114,13 +114,19 @@ function renderApp() {
         </div>
       </div>
 
-      <!-- Real-World Creator Assistant Box -->
-      <div id="critiqueBox" class="bg-gray-950 border border-cyan-500/30 p-4 rounded-xl text-xs space-y-3">
-        <p class="font-bold text-cyan-400 text-sm flex items-center gap-1.5">
-          <span>👑</span> GOAT Workflow Directives:
-        </p>
+      <!-- Live Interactive On-Screen Assistant -->
+      <div id="critiqueBox" class="bg-gray-950 border border-cyan-500/30 p-5 rounded-xl text-xs space-y-3">
+        <div class="flex justify-between items-center">
+          <p class="font-bold text-cyan-400 text-sm flex items-center gap-2">
+            <span>🤖</span> Live App Guidance & Action Steps
+          </p>
+          <span id="exposureStatusBadge" class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-gray-800 text-gray-400">
+            Awaiting Image
+          </span>
+        </div>
+        
         <div id="critiqueFeedback" class="text-gray-300 space-y-2 leading-relaxed">
-          Upload a shot above to detect exposure issues and get step-by-step recovery steps.
+          Upload an image above. The app will automatically analyze your pixels and generate your step-by-step recovery checklist right here.
         </div>
       </div>
 
@@ -211,7 +217,7 @@ function processImageFile(file, type) {
         activePreset = null;
       }
 
-      runHumanAnalysis();
+      runAppOnScreenGuidance();
     };
     img.src = event.target.result;
   };
@@ -245,7 +251,7 @@ function restoreCanvasState() {
     }
   }
 
-  if (primaryImageData) runHumanAnalysis();
+  if (primaryImageData) runAppOnScreenGuidance();
 }
 
 // ==========================================
@@ -353,10 +359,11 @@ function drawVectorscope(imageData) {
 }
 
 // ==========================================
-// 7. GOAT WORKFLOW ANALYSIS ENGINE
+// 7. DIRECT ON-SCREEN APP GUIDANCE ENGINE
 // ==========================================
-function runHumanAnalysis() {
+function runAppOnScreenGuidance() {
   const feedback = document.getElementById("critiqueFeedback");
+  const badge = document.getElementById("exposureStatusBadge");
   if (!feedback || !primaryImageData) return;
 
   const pData = primaryImageData.rawData;
@@ -370,17 +377,41 @@ function runHumanAnalysis() {
   }
 
   const pAvgLuma = pLumaSum / sampleCount;
-  let steps = [];
+  let cards = [];
 
-  // OVEREXPOSURE & WASHED OUT DETECTION (Luma > 110)
+  // 1. OVEREXPOSURE & WASHED OUT DETECTION
   if (pAvgLuma > 110) {
-    steps.push(`⚠️ <strong>CRITICAL RECOVERY NEEDED (Shot is Overexposed):</strong><br/>
-    Before applying any LUT or creative color, do these initial steps in Node 1 in DaVinci:
-    <ul class="list-disc pl-4 mt-1 space-y-1 text-gray-300">
-      <li><strong>Pull Highlights Down (-60 to -80):</strong> Brings back flushed details in bright areas.</li>
-      <li><strong>Crush Lift / Shadows Down:</strong> Lowers dark areas to true black to restore washed-out contrast.</li>
-      <li><strong>Boost Saturation (+15) & Color Boost (+20):</strong> Restores dead, pale skin/object colors safely.</li>
-    </ul>`);
+    if (badge) {
+      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800";
+      badge.innerText = "Overexposed & Flushed Details";
+    }
+
+    cards.push(`
+      <div class="bg-amber-950/40 border border-amber-500/40 p-3 rounded-lg space-y-1.5">
+        <p class="font-bold text-amber-300 text-xs flex items-center gap-1.5">
+          <span>⚠️</span> REQUIRED INITIAL RECOVERY (Before Applying Color/LUTs)
+        </p>
+        <p class="text-amber-200/90 text-xs leading-relaxed">
+          Your shot has severe highlight glare and lost color density. Perform these 3 slider moves in <strong>Node 1 (DaVinci)</strong> first:
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+          <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
+            <strong class="text-amber-400 block">1. Highlights:</strong> Pull down to -70 to reveal flushed details.
+          </div>
+          <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
+            <strong class="text-amber-400 block">2. Shadows / Lift:</strong> Lower down until blacks look rich.
+          </div>
+          <div class="bg-black/40 p-2 rounded border border-amber-500/20 text-[11px]">
+            <strong class="text-amber-400 block">3. Color Boost:</strong> Turn up to +20 to restore dead colors.
+          </div>
+        </div>
+      </div>
+    `);
+  } else {
+    if (badge) {
+      badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold bg-green-950 text-green-400 border border-green-800";
+      badge.innerText = "Exposure Well Balanced";
+    }
   }
 
   // Determine Target (from Reference image OR Preset)
@@ -407,24 +438,52 @@ function runHumanAnalysis() {
     targetMoodName = p.name;
   }
 
-  // Exposure Guidance for Grade
+  // 2. MOOD & EXPOSURE MATCHING
   const lumaDiff = targetLuma - pAvgLuma;
+  let exposureStepText = "";
   if (lumaDiff < -15) {
-    steps.push(`☀️ <strong>Node 2 (Exposure Matching):</strong> Target <em>${targetMoodName}</em> is moodier. Turn EXPOSURE down (-0.40 to -0.70).`);
+    exposureStepText = `Target <strong>${targetMoodName}</strong> is moodier. Reduce Exposure (-0.40) and lower shadows.`;
   } else if (lumaDiff > 15) {
-    steps.push(`🔆 <strong>Node 2 (Exposure Matching):</strong> Target is brighter. Lift midtones slightly.`);
+    exposureStepText = `Target is brighter. Lift midtones slightly (+0.30).`;
+  } else {
+    exposureStepText = `Exposure matches target <strong>${targetMoodName}</strong> perfectly.`;
   }
 
-  // Color Balance Guidance
+  // 3. COLOR WHEEL MATCHING
+  let colorStepText = "";
   if (targetWarmth > 10) {
-    steps.push(`🔥 <strong>Node 3 (Color Look):</strong> Nudge midtone wheel toward <strong>Warm Amber/Orange</strong>.`);
+    colorStepText = `Nudge your Gamma/Midtone wheel toward <strong>Warm Amber/Orange</strong>.`;
   } else if (targetWarmth < -10) {
-    steps.push(`❄️ <strong>Node 3 (Color Look):</strong> Push shadow wheel toward <strong>Teal/Cool Blue</strong>.`);
+    colorStepText = `Push your Lift/Shadow wheel toward <strong>Cool Teal/Blue</strong>.`;
+  } else {
+    colorStepText = `Color temperature is balanced.`;
   }
 
-  steps.push(`💡 <strong>Final Polish (Node 4):</strong> Export the LUT above, place it on Node 3, then add a subtle vignette to make your subject pop like a GOAT!`);
+  cards.push(`
+    <div class="bg-gray-900/90 border border-gray-800 p-3 rounded-lg space-y-2">
+      <p class="font-bold text-cyan-400 text-xs">🎯 MOOD & COLOR MATCHING STEPS (Node 2 & 3 in DaVinci):</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+        <div class="bg-black/40 p-2 rounded border border-gray-800">
+          <strong class="text-cyan-300 block">Exposure Adjustment:</strong> ${exposureStepText}
+        </div>
+        <div class="bg-black/40 p-2 rounded border border-gray-800">
+          <strong class="text-cyan-300 block">Color Wheels Shift:</strong> ${colorStepText}
+        </div>
+      </div>
+    </div>
+  `);
 
-  feedback.innerHTML = steps.map(item => `<div class="bg-gray-900 p-2.5 rounded-lg border border-gray-800">${item}</div>`).join("");
+  // 4. ONE-CLICK LUT SHORTCUT
+  cards.push(`
+    <div class="bg-purple-950/30 border border-purple-500/30 p-3 rounded-lg flex justify-between items-center text-xs">
+      <div>
+        <strong class="text-purple-300 block">🚀 1-Click Fast Track:</strong>
+        <span class="text-purple-200/80 text-[11px]">Click 'Export 3D .CUBE LUT' at the top and drop the downloaded file onto Node 3.</span>
+      </div>
+    </div>
+  `);
+
+  feedback.innerHTML = cards.join("");
 }
 
 // ==========================================
