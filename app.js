@@ -76,9 +76,9 @@ function renderApp() {
       <div id="toolbar" class="flex flex-wrap gap-2 items-center justify-between border-t border-b border-gray-800 py-3">
         <button 
           id="toggleFalseColor" 
-          class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-cyan-300 rounded-lg text-xs font-semibold border border-gray-700 transition"
+          class="px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition"
         >
-          🎨 Toggle False Color Mode
+          🎨 ${isFalseColorActive ? 'Disable False Color' : 'Toggle False Color Mode'}
         </button>
 
         <button 
@@ -160,11 +160,11 @@ function renderApp() {
   `;
 
   attachEventListeners();
-  restoreCanvasState(); // Re-draws canvases across step changes without losing data
+  restoreCanvasState();
 }
 
 // ==========================================
-// 3. FILE INGESTION & ASYNCHRONOUS EVENT BINDINGS
+// 3. FILE INGESTION & EVENT BINDINGS
 // ==========================================
 function attachEventListeners() {
   bindDropzone("dropzonePrimary", "filePrimary", (file) => processImageFile(file, 'primary'));
@@ -176,7 +176,6 @@ function attachEventListeners() {
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
 
-  // Non-blocking UI step navigation (Fixes INP 512ms issue)
   if (prevBtn) {
     prevBtn.onclick = () => {
       if (currentStep > 0) {
@@ -231,12 +230,19 @@ function processImageFile(file, type) {
       const ctx = canvas.getContext("2d");
       canvas.width = img.width;
       canvas.height = img.height;
+      ctx.clearRect(0, 0, img.width, img.height);
       ctx.drawImage(img, 0, 0);
 
       const imageData = ctx.getImageData(0, 0, img.width, img.height);
 
       if (type === 'primary') {
-        primaryImageData = { img, imageData, rawData: new Uint8ClampedArray(imageData.data) };
+        // Deep copy of raw data ensures pristine baseline regardless of transformations
+        primaryImageData = { 
+          img, 
+          imageData, 
+          rawData: new Uint8ClampedArray(imageData.data) 
+        };
+        isFalseColorActive = false; // Reset toggle on fresh upload
         drawHistogram(imageData, 'primaryHist');
         drawVectorscope(imageData);
       } else {
@@ -258,7 +264,13 @@ function restoreCanvasState() {
       const ctx = canvas.getContext("2d");
       canvas.width = primaryImageData.img.width;
       canvas.height = primaryImageData.img.height;
-      ctx.putImageData(primaryImageData.imageData, 0, 0);
+      
+      if (isFalseColorActive) {
+        applyFalseColorToCanvas(ctx, canvas.width, canvas.height);
+      } else {
+        ctx.putImageData(primaryImageData.imageData, 0, 0);
+      }
+      
       drawHistogram(primaryImageData.imageData, 'primaryHist');
       drawVectorscope(primaryImageData.imageData);
     }
@@ -281,7 +293,7 @@ function restoreCanvasState() {
 }
 
 // ==========================================
-// 5. ENTERPRISE FEATURE: FALSE COLOR ENGINE
+// 5. FALSE COLOR ENGINE
 // ==========================================
 function toggleFalseColorMode() {
   if (!primaryImageData) return;
@@ -293,87 +305,100 @@ function toggleFalseColorMode() {
   isFalseColorActive = !isFalseColorActive;
 
   if (isFalseColorActive) {
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imgData.data;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      
-      // Calculate IRE / Luminance (BT.709)
-      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-      // False Color Mapping Rules
-      if (luma >= 250) { // Clipped Highlights (>100 IRE) -> Red
-        data[i] = 255; data[i + 1] = 0; data[i + 2] = 0;
-      } else if (luma >= 100 && luma <= 115) { // Skin Tone High (~70 IRE) -> Pink
-        data[i] = 255; data[i + 1] = 105; data[i + 2] = 180;
-      } else if (luma >= 40 && luma <= 48) { // 18% Middle Gray (~42 IRE) -> Green
-        data[i] = 0; data[i + 1] = 255; data[i + 2] = 0;
-      } else if (luma <= 10) { // Crushed Shadows (<3 IRE) -> Purple
-        data[i] = 128; data[i + 1] = 0; data[i + 2] = 128;
-      } else { // Monochrome base for standard values
-        data[i] = luma; data[i + 1] = luma; data[i + 2] = luma;
-      }
-    }
-    ctx.putImageData(imgData, 0, 0);
+    applyFalseColorToCanvas(ctx, canvas.width, canvas.height);
   } else {
-    // Restore raw pixels
     ctx.putImageData(primaryImageData.imageData, 0, 0);
+  }
+
+  // Update button visual state
+  const btn = document.getElementById("toggleFalseColor");
+  if (btn) {
+    btn.className = `px-3 py-1.5 ${isFalseColorActive ? 'bg-cyan-700 text-white' : 'bg-gray-800 text-cyan-300'} hover:bg-cyan-600 rounded-lg text-xs font-semibold border border-gray-700 transition`;
+    btn.innerText = isFalseColorActive ? "🎨 Disable False Color" : "🎨 Toggle False Color Mode";
   }
 }
 
+function applyFalseColorToCanvas(ctx, width, height) {
+  const imgData = ctx.createImageData(width, height);
+  const targetData = imgData.data;
+  const raw = primaryImageData.rawData;
+
+  for (let i = 0; i < raw.length; i += 4) {
+    const r = raw[i];
+    const g = raw[i + 1];
+    const b = raw[i + 2];
+    
+    // Luminance via Rec. 709 coefficients
+    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+    if (luma >= 250) { // Clipped Highlights (>100 IRE) -> Red
+      targetData[i] = 255; targetData[i + 1] = 0; targetData[i + 2] = 0;
+    } else if (luma >= 100 && luma <= 115) { // Skin Tone High (~70 IRE) -> Pink
+      targetData[i] = 255; targetData[i + 1] = 105; targetData[i + 2] = 180;
+    } else if (luma >= 40 && luma <= 48) { // 18% Middle Gray (~42 IRE) -> Green
+      targetData[i] = 0; targetData[i + 1] = 255; targetData[i + 2] = 0;
+    } else if (luma <= 10) { // Crushed Shadows (<3 IRE) -> Purple
+      targetData[i] = 128; targetData[i + 1] = 0; targetData[i + 2] = 128;
+    } else { // Monochrome base
+      targetData[i] = luma; targetData[i + 1] = luma; targetData[i + 2] = luma;
+    }
+    targetData[i + 3] = raw[i + 3]; // Preserve alpha channel
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
 // ==========================================
-// 6. ENTERPRISE FEATURE: 360° YUV VECTORSCOPE
+// 6. 360° YUV VECTORSCOPE
 // ==========================================
 function drawVectorscope(imageData) {
   const canvas = document.getElementById("vectorscopeCanvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  const size = canvas.width; // 180px
+  const size = canvas.width; 
   const center = size / 2;
   const radius = center - 10;
 
   ctx.clearRect(0, 0, size, size);
 
-  // Draw Chromatic Circle Outer Ring
+  // Background ring
   ctx.strokeStyle = "#374151";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.arc(center, center, radius, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Draw Crosshairs
+  // Axis lines
   ctx.beginPath();
   ctx.moveTo(center, 5); ctx.lineTo(center, size - 5);
   ctx.moveTo(5, center); ctx.lineTo(size - 5, center);
   ctx.stroke();
 
-  // Draw 123° Skin Tone Line
+  // 123° Skin Tone Target Line
   const skinAngle = (123 * Math.PI) / 180;
-  ctx.strokeStyle = "#f59e0b"; // Warm Amber
+  ctx.strokeStyle = "#f59e0b"; 
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(center, center);
   ctx.lineTo(center + Math.cos(skinAngle) * radius, center - Math.sin(skinAngle) * radius);
   ctx.stroke();
 
-  // Plot YUV Pixel Values
+  // Plotting pixel scatter with adaptive downsampling based on image size
   const pixels = imageData.data;
-  ctx.fillStyle = "rgba(6, 182, 212, 0.25)"; // Cyan plot points
+  const totalPixels = pixels.length / 4;
+  const step = Math.max(4, Math.floor(totalPixels / 15000)) * 4; // Caps plot count to ~15,000 points
 
-  const step = 8; // Downsample for real-time rendering speed
-  for (let i = 0; i < pixels.length; i += 4 * step) {
+  ctx.fillStyle = "rgba(6, 182, 212, 0.35)";
+
+  for (let i = 0; i < pixels.length; i += step) {
     const r = pixels[i];
     const g = pixels[i + 1];
     const b = pixels[i + 2];
 
-    // RGB to YUV Color Conversion
+    // BT.601 YUV representation for vectorscope standard
     const u = -0.14713 * r - 0.28886 * g + 0.436 * b;
     const v = 0.615 * r - 0.51499 * g - 0.10001 * b;
 
-    // Scale U/V to Canvas Coordinates
     const x = center + (u * (radius / 128));
     const y = center - (v * (radius / 128));
 
@@ -396,6 +421,7 @@ function drawHistogram(imageData, canvasId) {
   const gBin = new Uint32Array(256);
   const bBin = new Uint32Array(256);
 
+  // Subsample every 4th pixel for UI speed
   for (let i = 0; i < pixels.length; i += 16) {
     rBin[pixels[i]]++;
     gBin[pixels[i + 1]]++;
@@ -440,29 +466,31 @@ function runEnterpriseAnalysis() {
 
   let report = [];
 
-  // 1. Primary Luminance Calculation
-  const pData = primaryImageData.imageData.data;
+  const pData = primaryImageData.rawData;
   let pLumaSum = 0;
-  for (let i = 0; i < pData.length; i += 16) {
+  const sampleStep = 16;
+  const sampleCount = pData.length / sampleStep;
+
+  for (let i = 0; i < pData.length; i += sampleStep) {
     pLumaSum += (0.2126 * pData[i] + 0.7152 * pData[i + 1] + 0.0722 * pData[i + 2]);
   }
-  const pAvgLuma = (pLumaSum / (pData.length / 16)).toFixed(1);
+  const pAvgLuma = (pLumaSum / sampleCount).toFixed(1);
 
   report.push(`📸 <strong>Your Shot Avg Exposure:</strong> ${pAvgLuma} / 255 IRE.`);
 
-  // 2. Reference Delta Match Calculation
   if (referenceImageData) {
     const rData = referenceImageData.imageData.data;
     let rLumaSum = 0;
     let rRedSum = 0, rBlueSum = 0;
+    const rSampleCount = rData.length / sampleStep;
     
-    for (let i = 0; i < rData.length; i += 16) {
+    for (let i = 0; i < rData.length; i += sampleStep) {
       rRedSum += rData[i];
       rBlueSum += rData[i + 2];
       rLumaSum += (0.2126 * rData[i] + 0.7152 * rData[i + 1] + 0.0722 * rData[i + 2]);
     }
 
-    const rAvgLuma = (rLumaSum / (rData.length / 16)).toFixed(1);
+    const rAvgLuma = (rLumaSum / rSampleCount).toFixed(1);
     const lumaDelta = (rAvgLuma - pAvgLuma).toFixed(1);
 
     if (Math.abs(lumaDelta) > 15) {
@@ -472,7 +500,6 @@ function runEnterpriseAnalysis() {
       report.push(`✅ <strong>Exposure Matched:</strong> Luminance closely matches your reference frame.`);
     }
 
-    // Warmth/Coolness Delta
     if (rRedSum > rBlueSum) {
       report.push(`🎨 <strong>Target Grade Mood:</strong> Reference relies on warm split-toning (Red/Orange bias). Push midtone wheels toward 60° Amber.`);
     } else {
@@ -486,7 +513,7 @@ function runEnterpriseAnalysis() {
 }
 
 // ==========================================
-// 9. ENTERPRISE FEATURE: 3D .CUBE LUT EXPORT
+// 9. 3D .CUBE LUT EXPORT ENGINE
 // ==========================================
 function export3DLUT() {
   if (!primaryImageData) {
@@ -494,46 +521,45 @@ function export3DLUT() {
     return;
   }
 
-  const lutSize = 17; // Standard 17x17x17 3D LUT Cube
-  let lutContent = `# Color Director Generated 3D LUT\nLUT_3D_SIZE ${lutSize}\n\n`;
+  const lutSize = 17;
+  const lines = [`# Color Director Generated 3D LUT`, `LUT_3D_SIZE ${lutSize}`, ``];
 
-  // Calculate global shift factors based on image analysis
-  const pData = primaryImageData.imageData.data;
+  const pData = primaryImageData.rawData;
   let rSum = 0, gSum = 0, bSum = 0;
+  const count = pData.length / 16;
+  
   for (let i = 0; i < pData.length; i += 16) {
     rSum += pData[i]; gSum += pData[i + 1]; bSum += pData[i + 2];
   }
-  const count = pData.length / 16;
-  const rMult = (rSum / count) / 128; // Normalize multiplier around 1.0
+  
+  const rMult = (rSum / count) / 128;
   const gMult = (gSum / count) / 128;
   const bMult = (bSum / count) / 128;
 
-  // Generate 3D RGB Mapping Grid
   for (let b = 0; b < lutSize; b++) {
     for (let g = 0; g < lutSize; g++) {
       for (let r = 0; r < lutSize; r++) {
-        // Input values [0.0 to 1.0]
         const rIn = r / (lutSize - 1);
         const gIn = g / (lutSize - 1);
         const bIn = b / (lutSize - 1);
 
-        // Apply grade transformation mapping
         const rOut = Math.min(1.0, Math.max(0.0, rIn * (1.1 - (rMult - 1.0)))).toFixed(6);
         const gOut = Math.min(1.0, Math.max(0.0, gIn * (1.1 - (gMult - 1.0)))).toFixed(6);
         const bOut = Math.min(1.0, Math.max(0.0, bIn * (1.1 - (bMult - 1.0)))).toFixed(6);
 
-        lutContent += `${rOut} ${gOut} ${bOut}\n`;
+        lines.push(`${rOut} ${gOut} ${bOut}`);
       }
     }
   }
 
-  // Download .cube file directly in browser
-  const blob = new Blob([lutContent], { type: "text/plain" });
+  const blob = new Blob([lines.join('\n')], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = "Color_Director_Grade.cube";
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
